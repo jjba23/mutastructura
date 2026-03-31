@@ -1,4 +1,3 @@
-BEGIN TRANSACTION;
 CREATE TABLE IF NOT EXISTS "password_reset" (
 	"user_id"	varchar(36) NOT NULL UNIQUE,
 	"reset_token"	varchar(2048) NOT NULL,
@@ -48,5 +47,3 @@ CREATE TABLE IF NOT EXISTS "user" (
 	"permissions"	varchar(4096),
 	PRIMARY KEY("id")
 );
-
-COMMIT;

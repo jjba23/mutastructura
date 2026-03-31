@@ -48,8 +48,8 @@ show_help() {
   cat "${resources_dir}/help.txt"
 }
 
-parsed_options=$(getopt -n "mutastructura" -o m:d:f:r:h \
-  --long mode:,destination:,file:,resources:,help -- "$@")
+parsed_options=$(getopt -n "mutastructura" -o m:c:r:h \
+  --long migrations:connection:,resources:,help -- "$@")
 
 eval set -- "${parsed_options}"
 
@@ -70,6 +70,11 @@ while true; do
     guile_cmd_args+=("--migrations" "$(realpath "${migrations_arg}")")
     shift 2
     ;;
+  -c | --connection)
+    connection_arg="${2}"
+    guile_cmd_args+=("--migrations" "${connection_arg}")
+    shift 2
+    ;;  
   -r | --resources)
     resources="${2}"
     if [[ -n "${resources}" ]]; then
@@ -95,13 +100,6 @@ done
 
 # The resources
 guile_cmd_args+=("--resources" "${resources_arg}")
-
-# # The bookmarks file
-# if [[ -z "${file_arg}" ]]; then
-#   log_error "Error: The file argument is required. Use -f or --file." >&2
-#   show_help
-#   exit 1
-# fi
 
 log_info "-------------------------------------------------"
 log_info "Starting Mutastructura: guile ${guile_cmd_args[*]}"

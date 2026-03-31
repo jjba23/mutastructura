@@ -18,8 +18,14 @@
 (define-module (mutastructura main)
   #:declarative? #f
   #:use-module (ice-9 getopt-long)
+  #:use-module (ice-9 textual-ports)
   #:use-module (ice-9 match)
+  #:use-module (dbi dbi)
+  #:use-module (ice-9 ftw)
   #:export (main))
+
+(define (whitespace-only? str)
+  (string-every char-whitespace? str))
 
 (define* (main #:key (args (command-line)))
   
@@ -27,12 +33,24 @@
                                    (value #t))
                         (migrations (single-char #\m)
                                     (value #t)
+                                    (required? #t))
+                        (connection (single-char #\c)
+                                    (value #t)
                                     (required? #t))))
          (options (getopt-long args option-spec))
          (migrations (option-ref options
                                  'migrations #f))
+         (connection (option-ref options
+                                 'connection #f))
          (resources (option-ref options
-                                'resources #f)))
+                                'resources #f))
+         (raw-migration-files (scandir migrations
+                                       (lambda (file)
+                                         (string-suffix? ".sql" file))))
+         (migration-files (map (lambda (rm)
+                                 (format #f "~a/~a" migrations rm))
+                               raw-migration-files))
+         (db-obj (dbi-open "sqlite3" connection)))
     (display (format #f
               "
 ---------------------------------------------------------
@@ -40,7 +58,23 @@ Mutastructura: Migrations
     loading migrations: ~a
 ---------------------------------------------------------
 "
-              migrations))
+              migration-files))
+    (for-each (lambda (migration)
+                (let* ((contents (call-with-input-file migration
+                                   get-string-all))
+                       (statements (map string-trim
+                                        (string-split contents #\;)))
+                       (qs (filter (lambda (s)
+                                     (not (whitespace-only? s))) statements)))
+                  (for-each (lambda (q)
+                              (newline)
+                              (newline)
+                              (display q)
+                              (dbi-query db-obj q)
+                              (newline)
+                              (display db-obj)) qs))) migration-files)
+    (display "\nClosing database...")
+    (dbi-close db-obj)
 
     ))
 

@@ -21,6 +21,9 @@
 
 ;; ====== Maak constants ======
 
+(define some-test-db
+  "./lucidplan-test.sqlite")
+
 ;; The path to the directory where the main project files will be deployed.
 (define deploy-dir
   "/srv/http/jointhefreeworld.org")
@@ -81,14 +84,19 @@
                                  "bash coreutils util-linux-with-udev guile")))
 
 (define (dev-run)
-    "Run mutastructura (dev)."  
+  "Run mutastructura (dev)."
+  (delete-file-recursively some-test-db)
   (time-machine-manifest-shell (list
                                 "guile -L ./src -c '((@(mutastructura main) main))'"
-                                 "--migrations ./migrations/lucidplan"
+                                (~ "--connection ~a" some-test-db)
+                                "--migrations ./migrations/lucidplan"
                                 "--resources ./resources")
                                #:verbose? #t))
 
 (define (run)
-  "Run mutastructura."  
-  (time-machine-program-shell (list "mutastructura --migrations ./migrations/lucidplan")
+  "Run mutastructura."
+  (delete-file-recursively some-test-db)
+  (time-machine-program-shell (list (~
+                                     "mutastructura --connection ~a --migrations ./migrations/lucidplan"
+                                     some-test-db))
                               #:verbose? #t))
