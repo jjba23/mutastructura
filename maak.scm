@@ -74,13 +74,14 @@
   (delete-file-recursively "doc"))
 
 (define (package-docker)
-  "Create a Docker image for Iter Vitae."
+  "Create a Docker image for Mutastructura."
   (time-machine-manifest-shell '("guix pack --file=./guix.scm"
                                  "--format=docker" "--image-tag=mutastructura"
                                  "-S /bin=bin"
                                  "bash coreutils util-linux-with-udev guile")))
 
-(define (dev-run* bookmarks-file)
+(define (dev-run)
+    "Run mutastructura (dev)."  
   (time-machine-manifest-shell (list
                                 "guile -L ./src -c '((@(mutastructura main) main))'"
                                  "--migrations ./migrations/lucidplan"

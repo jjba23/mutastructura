@@ -1,30 +1,30 @@
 #!/usr/bin/env bash
 
-# Lenkesamler
+# Mutastructura
 
 # Copyright © Josep Jesus Bigorra Algaba
 
-# lenkesamler is free software: you can redistribute it and/or modify
+# mutastructura is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 
-# lenkesamler is distributed in the hope that it will be useful,
+# mutastructura is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 
 # You should have received a copy of the GNU Affero General Public License
-# along with lenkesamler. If not, see <https://www.gnu.org/licenses/>.
+# along with mutastructura. If not, see <https://www.gnu.org/licenses/>.
 
 # Commentary:
 #
 # This bash script provides a convenient and user-friendly wrapper
-# around the command-line usage of `lenkesamler`, allowing the
+# around the command-line usage of `mutastructura`, allowing the
 # Guile Scheme application to behave and feel like any other
 # executable or binary that users may install to their systems.
 #
-# This also helps installing `lenkesamler` in a convenient fashion
+# This also helps installing `mutastructura` in a convenient fashion
 # to the Guix store and it allows us to decouple the user-facing
 # command-line interface from the internal Guile Scheme arguments
 # to the main program and library.
@@ -48,7 +48,7 @@ show_help() {
   cat "${resources_dir}/help.txt"
 }
 
-parsed_options=$(getopt -n "lenkesamler" -o m:d:f:r:h \
+parsed_options=$(getopt -n "mutastructura" -o m:d:f:r:h \
   --long mode:,destination:,file:,resources:,help -- "$@")
 
 eval set -- "${parsed_options}"
@@ -60,24 +60,14 @@ resources_arg="${resources_dir}"
 
 guile_cmd_args=(
   "-L" "${scheme_sources_dir}"
-  "-c" "((@(lenkesamler main) main))"
+  "-c" "((@(mutastructura main) main))"
 )
 
 while true; do
   case "${1}" in
-  -m | --mode)
-    mode_arg="${2}"
-    [[ -n "${mode_arg}" ]] && guile_cmd_args+=("--mode" "${mode_arg}")
-    shift 2
-    ;;
-  -d | --destination)
-    destination_arg="${2}"
-    [[ -n "${destination_arg}" ]] && guile_cmd_args+=("--destination" "${destination_arg}")
-    shift 2
-    ;;
-  -f | --file)
-    file_arg="${2}"
-    guile_cmd_args+=("--file" "$(realpath "${file_arg}")")
+  -m | --migrations)
+    migrations_arg="${2}"
+    guile_cmd_args+=("--migrations" "$(realpath "${migrations_arg}")")
     shift 2
     ;;
   -r | --resources)
@@ -106,15 +96,15 @@ done
 # The resources
 guile_cmd_args+=("--resources" "${resources_arg}")
 
-# The bookmarks file
-if [[ -z "${file_arg}" ]]; then
-  log_error "Error: The file argument is required. Use -f or --file." >&2
-  show_help
-  exit 1
-fi
+# # The bookmarks file
+# if [[ -z "${file_arg}" ]]; then
+#   log_error "Error: The file argument is required. Use -f or --file." >&2
+#   show_help
+#   exit 1
+# fi
 
 log_info "-------------------------------------------------"
-log_info "Starting Lenkesamler: guile ${guile_cmd_args[*]}"
+log_info "Starting Mutastructura: guile ${guile_cmd_args[*]}"
 
 # Run Guile application
 exec guile "${guile_cmd_args[@]}"
