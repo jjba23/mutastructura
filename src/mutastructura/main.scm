@@ -66,9 +66,9 @@ Mutastructura: Migrations
     (dbi-close db)))
 
 (define (with-transaction db thunk)
-  (dbi-query db "BEGIN;")
+  (dbi-query db "BEGIN")
   (thunk)
-  (dbi-query db "COMMIT;"))
+  (dbi-query db "COMMIT"))
 
 (define (run-migration-file db)
   (lambda (path)
