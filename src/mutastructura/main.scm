@@ -66,9 +66,12 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp")
               (newline)
               (newline)))
          (_ (when (nil? migrations-history)
-              ((run-migration-file db)
-               (format #f "~a/application-migrations/sqlite3/0-init.sql"
-                       resources))))
+              (with-transaction db
+                                (lambda ()
+                                  ((run-migration-file db)
+                                   (format #f
+                                    "~a/application-migrations/sqlite3/0-init.sql"
+                                    resources))))))
          (migration-files (scandir-for-sql migrations-path))
          (file-checksums (map file-sha256 migration-files)))
     (display (format #f "
@@ -82,10 +85,11 @@ LOADING SCHEMA MIGRATIONS:
 
     (with-transaction db
                       (lambda ()
-                        (for-each (run-migration-file db) migration-files)))
-    (display "
+                        (for-each (run-migration-file db) migration-files)
+                        (display "
 ---------------------------------
-MIGRATIONS COMPLETED SUCCESSFULLY")
+MIGRATIONS COMPLETED SUCCESSFULLY")))
+
     (display "\nCLOSING DATABASE...")
     (dbi-close db)))
 
@@ -98,8 +102,8 @@ MIGRATIONS COMPLETED SUCCESSFULLY")
            (contents (call-with-input-file path
                        get-string-all))
            (statements (string-split-to-queries contents)))
-      (display (format #f "\nmigration file: ~a" path))
-      (display (format #f "\nmigration sha256: ~a" migration-sha))
+      (display (format #f "\n>>= MIGRATION: ~a" path))
+      (display (format #f "\nSHA256: ~a" migration-sha))
       (for-each (run-stmt db) statements))))
 
 (define (parse-db-type database)

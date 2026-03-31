@@ -55,10 +55,11 @@
                               (cond
                                 ((eq? 0
                                       (car st))
-                                 (dbi-query db "COMMIT") #t)
+                                 (dbi-query db "COMMIT")
+                                 (display "\n\n[SUCCESS] COMMIT TRANSACTION SUCCESSFULLY")#t)
                                 (else (display (format #f
-                                                       "\n\nSTMT ERROR: ~a\n"
-                                                       st))
+                                                       "\n\n[ERROR] ~a\n"
+                                                       (cdr st)))
                                       (raise-exception (make-exception-with-message
                                                         (format #f "~a"
                                                                 (cdr st))))))))))
