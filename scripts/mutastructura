@@ -49,13 +49,10 @@ show_help() {
 }
 
 parsed_options=$(getopt -n "mutastructura" -o m:d:c:r:h \
-  --long migrations:database:connection:,resources:,help -- "$@")
+  --long migrations:,database:,connection:,resources:,help -- "$@")
 
 eval set -- "${parsed_options}"
 
-mode_arg=""
-destination_arg=""
-file_arg=""
 resources_arg="${resources_dir}"
 
 guile_cmd_args=(
@@ -72,11 +69,11 @@ while true; do
     ;;
   -c | --connection)
     connection_arg="${2}"
-    guile_cmd_args+=("--migrations" "${connection_arg}")
+    guile_cmd_args+=("--connection" "${connection_arg}")
     shift 2
     ;;
   -d | --database)
-    connection_arg="${2}"
+    database_arg="${2}"
     guile_cmd_args+=("--database" "${database_arg}")
     shift 2
     ;;
