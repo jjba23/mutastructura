@@ -6,3 +6,8 @@
 
 Database Migration tool with great flexibility. Powered by Lisp (Guile Scheme). 
 
+-----------------
+
+** Supported databases
+
+SQLite3 (TODO PostgreSQL + MySQL)
