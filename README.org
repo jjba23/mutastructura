@@ -1,13 +1,98 @@
-#+title: MutaStructura
+#+TITLE: MUTASTRUCTURA
+#+SUBTITLE: Relational Schema Migrations Powered by Lisp
+#+AUTHOR: Josep Jesus Bigorra Algaba
+#+EMAIL: jjbigorra@gmail.com
+#+LANGUAGE: en
+#+OPTIONS: toc:nil
 
-#+begin_quote
-🚧 Work in Progress
-#+end_quote
+🚧 *WORK IN PROGRESS*
 
-Database Migration tool with great flexibility. Powered by Lisp (Guile Scheme). 
+#+begin_src
+      🏛️  M U T A S T R U C T U R A  🏛️
+           _ ___________________ _
+          / )===================( \
+         / /                     \ \
+        | |   ( )   ( )   ( )     | |
+        | |   ( )   ( )   ( )     | |
+        | |   ( )   ( )   ( )     | |
+        | |   ( )   ( )   ( )     | |
+        |_|=======================|_|
+     _ _ V E N I • V I D I • L I S P _ _
+#+end_src
+
+* Overview (PROLOGUS)
+
+/Ave, viator!/ 
+
+This tool ensures your database state is exactly as you decree, incrementally.
+
+By reading your SQL migration scrolls, checking their cryptographic signatures, and executing them within strictly guarded transactions, it mutastructura aims to  manage your data structures with the discipline of a Roman legion.
 
 -----------------
 
-** Supported databases
+* Features (VIRTUTES)
+
+Mutastructura provides a declarative, transactional approach to managing your database states:
+
+- *Lingua Lisp:* Written purely in Guile Scheme, bringing functional purity and S-expression elegance to your CI/CD pipelines.
+- *Imperium of Databases:* Native ~dbi~ support to conquer ~postgresql~, ~mysql~, and ~sqlite3~. Auto-installs the schema management ~migrations_history~.
+- *Lex Faciens (Transactional Integrity):* Every migration is executed within a ~with-transaction~ block. If a migration fails, the legion retreats (~ROLLBACK~), ensuring your database is never left in a corrupted, half-migrated state.
+- *Intelligent Parsing:* Features a custom, finite-state-machine-based SQL lexer (~string-split-to-queries~).
+- *Immutable Ledgers:* Computes ~SHA256~ checksums of your migration files and tracks them in a ~migrations_history~ table, ensuring your schema evolution is strictly linear and tamper-evident.
+
+-----------------  
+
+* Architectura
+
+At its core, the orchestrator acts as a command-line utility that accepts your connection parameters and target files. 
+
+When invoked, Mutastructura:
+1. Opens a connection to your specified database engine.
+2. Queries the historical ledger (~migrations_history~) to see which migrations have already crossed the Rubicon.
+3. If no history exists, it initializes the schema via a genesis file (~0-init.sql~).
+4. Scans your provided migrations directory, generating SHA256 hashes for each file.
+5. Safely splits the SQL files into individual statements.
+6. Executes the statements synchronously.
+7. Commits the transaction and gracefully closes the connection.
+
+-----------------
+
+* Usage (PRAECEPTA)
+
+The project is written mostly in Lisp (Guile Scheme) and uses [[https://codeberg.org/jjba23/maak][Maak, the infinitely extensible command-runner]] as automation system with GNU Guix package manager and build system, making reproducibility and devex first-class concerns, not afterthoughts.
+
+To command the orchestrator, you must provide it with the necessary tactical parameters:
+
+#+BEGIN_SRC sh
+maak run # or maak dev-run
+# or
+guix time-machine --channels=channels.scm -- \
+     shell -f guix.scm -- mutastructura \
+     --database sqlite3 \
+     --connection ./lucidplan-test.sqlite \
+     --migrations ./migrations/lucidplan
+#+END_SRC
+
+** Argument Details
+- ~-d~ / ~--database~ :: The engine you are targeting (~sqlite3~, ~postgresql~, ~mysql~).
+- ~-c~ / ~--connection~ :: The connection string or path to your database.
+- ~-m~ / ~--migrations~ :: The path to your ~*.sql~ migration files.
+- ~-r~ / ~--resources~ :: Path to internal application resources (used for development and installation, bundled from ./resources dir).
+
+----------------
+
+* Lex et Ius (License)
+
+Mutastructura is free software: you can redistribute it and/or modify it under the terms of the *GNU Affero General Public License (AGPLv3)* as published by the Free Software Foundation. 
+
+Distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+-----------------
+
+* Supported databases
 
 SQLite3 (PostgreSQL + MySQL futurely, it's easy thanks to guile-dbd guile-dbi)
+
+#+begin_quote
+/Semper Fidelis ad Parentheses/
+#+end_quote

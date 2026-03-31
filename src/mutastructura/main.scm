@@ -32,7 +32,13 @@
 (define* (main #:key (args (command-line)))
   (display "
 ---------------------------------------------------------
-MUTASTRUCTURA: Schema Migrations tooling powered by Lisp")
+MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
+
+      🏛️  M U T A S T R U C T U R A  🏛️
+
+     _ _ V E N I • V I D I • L I S P _ _
+
+")
 
   (let* ((option-spec '((resources (single-char #\r)
                                    (value #t))
