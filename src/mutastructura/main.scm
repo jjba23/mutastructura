@@ -48,7 +48,7 @@
          (resources (option-ref options
                                 'resources #f))
          (db-type (parse-db-type database))
-         (db-obj (dbi-open db-type connection))
+         (db (dbi-open db-type connection))
          (migration-files (scandir-for-sql migrations-path)))
     (display (format #f
               "
@@ -58,22 +58,24 @@ Mutastructura: Migrations
 ---------------------------------------------------------
 "
               migration-files))
-    ;; Start the Transaction
-    (dbi-query db-obj "BEGIN;")
-    (for-each (lambda (migration)
-                (let* ((contents (call-with-input-file migration
-                                   get-string-all))
-                       (statements (string-split-to-queries contents)))
-                  (for-each (run-statement-on-db db-obj) statements)))
-              migration-files)
-    ;; On Success: Commit
-    (dbi-query db-obj "COMMIT;")
-    (display "
-Migrations completed successfully and committed.")
+    (with-transaction db
+                      (lambda ()
+                        (for-each (run-migration-file db) migration-files)))
+    (display "\nMigrations completed successfully")
     (display "\nClosing database...")
-    (dbi-close db-obj)
+    (dbi-close db)))
 
-    ))
+(define (with-transaction db thunk)
+  (dbi-query db "BEGIN;")
+  (thunk)
+  (dbi-query db "COMMIT;"))
+
+(define (run-migration-file db)
+  (lambda (path)
+    (let* ((contents (call-with-input-file path
+                       get-string-all))
+           (statements (string-split-to-queries contents)))
+      (for-each (run-statement-on-db db) statements))))
 
 (define (run-statement-on-db db)
   (lambda (stmt)
