@@ -36,21 +36,30 @@
                                     (required? #t))
                         (connection (single-char #\c)
                                     (value #t)
-                                    (required? #t))))
+                                    (required? #t))
+                        (database (single-char #\d)
+                                  (value #t)
+                                  (required? #t))))
          (options (getopt-long args option-spec))
          (migrations (option-ref options
                                  'migrations #f))
          (connection (option-ref options
                                  'connection #f))
+         (database (string->symbol (option-ref options
+                                               'database #f)))
          (resources (option-ref options
                                 'resources #f))
+         (db-type (match database
+                    ('postgresql "postgresql")
+                    ('mysql "mysql")
+                    ('sqlite "sqlite3")))
+         (db-obj (dbi-open db-type connection))
          (raw-migration-files (scandir migrations
                                        (lambda (file)
                                          (string-suffix? ".sql" file))))
          (migration-files (map (lambda (rm)
                                  (format #f "~a/~a" migrations rm))
-                               raw-migration-files))
-         (db-obj (dbi-open "sqlite3" connection)))
+                               raw-migration-files)))
     (display (format #f
               "
 ---------------------------------------------------------

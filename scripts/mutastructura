@@ -48,8 +48,8 @@ show_help() {
   cat "${resources_dir}/help.txt"
 }
 
-parsed_options=$(getopt -n "mutastructura" -o m:c:r:h \
-  --long migrations:connection:,resources:,help -- "$@")
+parsed_options=$(getopt -n "mutastructura" -o m:d:c:r:h \
+  --long migrations:database:connection:,resources:,help -- "$@")
 
 eval set -- "${parsed_options}"
 
@@ -74,7 +74,12 @@ while true; do
     connection_arg="${2}"
     guile_cmd_args+=("--migrations" "${connection_arg}")
     shift 2
-    ;;  
+    ;;
+  -d | --database)
+    connection_arg="${2}"
+    guile_cmd_args+=("--database" "${database_arg}")
+    shift 2
+    ;;
   -r | --resources)
     resources="${2}"
     if [[ -n "${resources}" ]]; then
