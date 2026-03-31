@@ -10,4 +10,4 @@ Database Migration tool with great flexibility. Powered by Lisp (Guile Scheme).
 
 ** Supported databases
 
-SQLite3 (TODO PostgreSQL + MySQL)
+SQLite3 (PostgreSQL + MySQL futurely, it's easy thanks to guile-dbd guile-dbi)
