@@ -85,7 +85,7 @@
 
 (define (dev-run)
   "Run mutastructura (dev)."
-  ;;(delete-file-recursively some-test-db)
+  (delete-file-recursively some-test-db)
   (time-machine-manifest-shell (list
                                 "guile -L ./src -c '((@(mutastructura main) main))'"
                                 (~ "--connection ~a" some-test-db)
@@ -96,7 +96,7 @@
 
 (define (run)
   "Run mutastructura."
-  ;;(delete-file-recursively some-test-db)
+  (delete-file-recursively some-test-db)
   (time-machine-program-shell (list "mutastructura --database sqlite3"
                                     (~ "--connection ~a " some-test-db)
                                     "--migrations ./migrations/lucidplan")

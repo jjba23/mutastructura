@@ -49,8 +49,8 @@
                                                 "/bin"))
                             (share (string-append (assoc-ref outputs "out")
                                                   "/share")))
-                        (install-file "resources/help.txt"
-                                      (string-append share "/resources/"))
+                        (copy-recursively "resources"
+                                      (string-append share "/resources"))
                         (install-file "scripts/mutastructura" bin)
                         (install-file "scripts/log.bash"
                                       (string-append share "/scripts/"))

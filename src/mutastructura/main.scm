@@ -58,7 +58,7 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp")
          (db (dbi-open db-type connection))
          (migrations-history (get-migrations-history db))
          (_ (begin
-              (display "\nmigrations-history:\n\n")
+              (display "\nMIGRATION HISTORY:\n\n")
               (for-each (lambda (h)
                           (write h)
                           (newline)
@@ -67,19 +67,26 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp")
               (newline)))
          (_ (when (nil? migrations-history)
               ((run-migration-file db)
-               (format #f "~a/application-migrations/sqlite3/0-init.sql" resources))))
+               (format #f "~a/application-migrations/sqlite3/0-init.sql"
+                       resources))))
          (migration-files (scandir-for-sql migrations-path))
          (file-checksums (map file-sha256 migration-files)))
-    (display (format #f "\nLOADING SCHEMA MIGRATIONS:\n\n"))
+    (display (format #f "
+----------------------------
+LOADING SCHEMA MIGRATIONS:
+
+"))
     (write (zip migration-files file-checksums))
     (newline)
     (newline)
 
-    ;; (with-transaction db
-    ;; (lambda ()
-    ;; (for-each (run-migration-file db) migration-files)))
-    ;; (display "\nMIGRATIONS COMPLETED SUCCESSFULLY")
-    (display "\nClosing database...")
+    (with-transaction db
+                      (lambda ()
+                        (for-each (run-migration-file db) migration-files)))
+    (display "
+---------------------------------
+MIGRATIONS COMPLETED SUCCESSFULLY")
+    (display "\nCLOSING DATABASE...")
     (dbi-close db)))
 
 (define (get-migrations-history db)
@@ -95,12 +102,11 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp")
       (display (format #f "\nmigration sha256: ~a" migration-sha))
       (for-each (run-stmt db) statements))))
 
-
 (define (parse-db-type database)
   (match database
     ('postgresql "postgresql")
     ('mysql "mysql")
     ('sqlite3 "sqlite3")
     (_ (raise-exception (make-exception-with-message (format #f
-                                                      "Unknown database type: ~a"
+                                                      "UNKNOWN DATABASE TYPE: ~a"
                                                       database))))))

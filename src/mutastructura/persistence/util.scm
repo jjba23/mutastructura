@@ -18,8 +18,10 @@
 (define-module (mutastructura persistence util)
   #:declarative? #t
   #:use-module (srfi srfi-9)
+  #:use-module (ice-9 exceptions)
   #:use-module (ice-9 string-fun)
   #:use-module (dbi dbi)
+  #:use-module (mutastructura prelude)
   #:export (symbols->sql-columns-list sql-row->scheme-alist
                                       symbol->sql-column
                                       sql-column->symbol
@@ -31,18 +33,35 @@
                                       with-transaction
                                       run-stmt))
 
-(define (with-transaction db thunk)
-  (dbi-query db "BEGIN")
-  (thunk)
-  (dbi-query db "COMMIT"))
-
 (define (run-stmt db)
   (lambda (stmt)
     (display (format #f "\n\n~a" stmt))
-    (dbi-query db stmt)
-    (display (format #f "\n~a" db))))
+    (dbi-query db stmt)))
 
-
+(define (with-transaction db thunk)
+  (with-exception-handler (lambda (ex)
+                            (display
+                             "
+[ERROR] MIGRATION FAILED, ROLL BACK CHANGES...
+")
+                            (display ex)
+                            (newline)
+                            (dbi-query db "ROLLBACK")
+                            (raise-exception ex))
+                          (lambda ()
+                            (dbi-query db "BEGIN")
+                            (thunk)
+                            (let* ((st (dbi-get_status db)))
+                              (cond
+                                ((eq? 0
+                                      (car st))
+                                 (dbi-query db "COMMIT") #t)
+                                (else (display (format #f
+                                                       "\n\nSTMT ERROR: ~a\n"
+                                                       st))
+                                      (raise-exception (make-exception-with-message
+                                                        (format #f "~a"
+                                                                (cdr st))))))))))
 
 (define (get-all-rows db query)
   (dbi-query db query)
