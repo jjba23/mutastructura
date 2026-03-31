@@ -21,6 +21,7 @@
   #:use-module (ice-9 textual-ports)
   #:use-module (ice-9 exceptions)
   #:use-module (ice-9 match)
+  #:use-module (ice-9 string-fun)
   #:use-module (dbi dbi)
   #:use-module (ice-9 ftw)
   #:export (main))
@@ -86,14 +87,6 @@ Mutastructura: Migrations
 (define (whitespace-only? str)
   (string-every char-whitespace? str))
 
-(define (is-not-whitespace-only? s)
-  (not (whitespace-only? s)))
-
-(define (string-split-to-queries s)
-  (filter is-not-whitespace-only?
-          (map string-trim
-               (string-split s #\;))))
-
 (define (scandir-for-sql path)
   (map (lambda (file)
          (format #f "~a/~a" path file))
@@ -109,3 +102,104 @@ Mutastructura: Migrations
     (_ (raise-exception (make-exception-with-message (format #f
                                                       "Unknown database type: ~a"
                                                       database))))))
+(define (string-split-to-queries sql-string)
+  (let loop
+    ((chars (string->list sql-string))
+     (state 'normal) ;States: normal, string, identifier, line-comment, block-comment
+     (current-acc '()) ;Accumulates characters for the current query
+     (queries '())) ;Accumulates finished queries
+    
+    (if (null? chars)
+        ;; Base case: End of string. Clean up and collect the final query.
+        (let ((final-query (string-trim (list->string (reverse current-acc)))))
+          (reverse (if (whitespace-only? final-query) queries
+                       (cons final-query queries))))
+
+        ;; Recursive case: Process the next character based on our current state.
+        (let ((c (car chars))
+              (rest (cdr chars)))
+          (case state
+            
+            ;; NORMAL STATE
+            ((normal)
+             (cond
+               ((char=? c #\')
+                 ;Enter single-quote string literal
+                (loop rest
+                      'string
+                      (cons c current-acc) queries))
+               ((char=? c #\")
+                 ;Enter double-quote identifier
+                (loop rest
+                      'identifier
+                      (cons c current-acc) queries))
+               ((char=? c #\;)
+                 ;Query finished! (Because we are in 'normal' state)
+                (let ((query (string-trim (list->string (reverse current-acc)))))
+                  (loop rest
+                        'normal
+                        '()
+                        (if (whitespace-only? query) queries
+                            (cons query queries)))))
+               ;; Check for start of line comment: --
+               ((and (char=? c #\-)
+                     (not (null? rest))
+                     (char=? (car rest) #\-))
+                (loop (cdr rest)
+                      'line-comment
+                      (cons #\-
+                            (cons #\- current-acc)) queries))
+               ;; Check for start of block comment: /*
+               ((and (char=? c #\/)
+                     (not (null? rest))
+                     (char=? (car rest) #\*))
+                (loop (cdr rest)
+                      'block-comment
+                      (cons #\*
+                            (cons #\/ current-acc)) queries))
+               (else (loop rest
+                           'normal
+                           (cons c current-acc) queries))))
+
+            ;; INSIDE STRING LITERAL ('...')
+            ((string)
+             (if (char=? c #\')
+                 (loop rest
+                       'normal
+                       (cons c current-acc) queries)
+                 (loop rest
+                       'string
+                       (cons c current-acc) queries)))
+
+            ;; INSIDE IDENTIFIER ("...")
+            ((identifier)
+             (if (char=? c #\")
+                 (loop rest
+                       'normal
+                       (cons c current-acc) queries)
+                 (loop rest
+                       'identifier
+                       (cons c current-acc) queries)))
+
+            ;; INSIDE LINE COMMENT (-- ...)
+            ((line-comment)
+             (if (char=? c #\newline)
+                 (loop rest
+                       'normal
+                       (cons c current-acc) queries)
+                 (loop rest
+                       'line-comment
+                       (cons c current-acc) queries)))
+
+            ;; INSIDE BLOCK COMMENT (/* ... */)
+            ((block-comment)
+             (if (and (char=? c #\*)
+                      (not (null? rest))
+                      (char=? (car rest) #\/))
+                 (loop (cdr rest)
+                       'normal
+                       (cons #\/
+                             (cons #\* current-acc)) queries)
+                 (loop rest
+                       'block-comment
+                       (cons c current-acc) queries))))))))
