@@ -1,10 +1,10 @@
-CREATE TABLE IF NOT EXISTS "password_reset" (
+CREATE TABLE "password_reset" (
 	"user_id"	varchar(36) NOT NULL UNIQUE,
 	"reset_token"	varchar(2048) NOT NULL,
 	"created_at"	date NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "project" (
+CREATE TABLE "project" (
 	"id"	varchar(36),
 	"human_id"	varchar(32) NOT NULL UNIQUE,
 	"title"	varchar(256) NOT NULL UNIQUE,
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS "project" (
 	PRIMARY KEY("id")
 );
 
-CREATE TABLE IF NOT EXISTS "ticket" (
+CREATE TABLE "ticket" (
 	"human_id"	integer,
 	"id"	varchar(36) NOT NULL UNIQUE,
 	"project_id"	varchar(36) NOT NULL,
@@ -32,13 +32,13 @@ CREATE TABLE IF NOT EXISTS "ticket" (
 	PRIMARY KEY("human_id" AUTOINCREMENT)
 );
 
-CREATE TABLE IF NOT EXISTS "ticket_assignee" (
+CREATE TABLE "ticket_assignee" (
 	"ticket_id"	varchar(36) NOT NULL,
 	"user_id"	varchar(36) NOT NULL,
 	PRIMARY KEY("ticket_id")
 );
 
-CREATE TABLE IF NOT EXISTS "user" (
+CREATE TABLE "user" (
 	"id"	varchar(36),
 	"username"	varchar(256) NOT NULL,
 	"email"	varchar(256) NOT NULL,

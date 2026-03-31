@@ -29,6 +29,10 @@
   #:export (main))
 
 (define* (main #:key (args (command-line)))
+  (display "
+---------------------------------------------------------
+Mutastructura: Migrations tool")
+
   (let* ((option-spec '((resources (single-char #\r)
                                    (value #t))
                         (migrations (single-char #\m)
@@ -51,21 +55,25 @@
                                 'resources #f))
          (db-type (parse-db-type database))
          (db (dbi-open db-type connection))
+         (migrations-history (get-migrations-history db))
+         (_ (unless migrations-history
+              ((run-migration-file db)
+               "./resources/application-migrations/sqlite3/0-init.sql")))
          (migration-files (scandir-for-sql migrations-path)))
-    (display (format #f
-              "
----------------------------------------------------------
-Mutastructura: Migrations
+    (display (format #f "
+    migrations-history: ~a
     loading migrations: ~a
----------------------------------------------------------
-"
-              migration-files))
+" migrations-history
+                     migration-files))
     (with-transaction db
                       (lambda ()
                         (for-each (run-migration-file db) migration-files)))
     (display "\nMigrations completed successfully")
     (display "\nClosing database...")
     (dbi-close db)))
+
+(define (get-migrations-history db)
+  (get-all-rows db "SELECT * FROM migrations_history"))
 
 (define (with-transaction db thunk)
   (dbi-query db "BEGIN")
@@ -106,6 +114,17 @@ Mutastructura: Migrations
     (_ (raise-exception (make-exception-with-message (format #f
                                                       "Unknown database type: ~a"
                                                       database))))))
+
+(define (get-all-rows db query)
+  (let* ((result #f))
+    (dbi-query db query)
+    (set! result
+          (dbi-get_row db))
+    (while (not (equal? result #f))
+           (display result)
+           (newline)
+           (set! result
+                 (dbi-get_row db))) result))
 
 (define (file-sha256 path)
   "Computes the SHA-256 of a file and returns a lowercase hexadecimal string."
@@ -215,3 +234,4 @@ Mutastructura: Migrations
                  (loop rest
                        'block-comment
                        (cons c current-acc) queries))))))))
+
