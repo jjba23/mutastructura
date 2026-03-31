@@ -22,6 +22,7 @@
   #:use-module (ice-9 exceptions)
   #:use-module (ice-9 match)
   #:use-module (ice-9 string-fun)
+  #:use-module (mutastructura persistence util)
   #:use-module (dbi dbi)
   #:use-module (ice-9 ftw)
   #:use-module (gcrypt hash)
@@ -56,19 +57,17 @@ Mutastructura: Migrations tool")
          (db-type (parse-db-type database))
          (db (dbi-open db-type connection))
          (migrations-history (get-migrations-history db))
-         (_ (unless migrations-history
+         (_ (display (format #f "\nmigrations-history: ~a\n"
+                             migrations-history)))
+         (_ (when (nil? migrations-history)
               ((run-migration-file db)
                "./resources/application-migrations/sqlite3/0-init.sql")))
          (migration-files (scandir-for-sql migrations-path)))
-    (display (format #f "
-    migrations-history: ~a
-    loading migrations: ~a
-" migrations-history
-                     migration-files))
-    (with-transaction db
-                      (lambda ()
-                        (for-each (run-migration-file db) migration-files)))
-    (display "\nMigrations completed successfully")
+    (display (format #f "\nloading migrations: ~a\n" migration-files))
+    ;; (with-transaction db
+    ;;                   (lambda ()
+    ;;                     (for-each (run-migration-file db) migration-files)))
+    ;; (display "\nMigrations completed successfully")
     (display "\nClosing database...")
     (dbi-close db)))
 
@@ -115,16 +114,15 @@ Mutastructura: Migrations tool")
                                                       "Unknown database type: ~a"
                                                       database))))))
 
+
+
 (define (get-all-rows db query)
-  (let* ((result #f))
-    (dbi-query db query)
-    (set! result
-          (dbi-get_row db))
-    (while (not (equal? result #f))
-           (display result)
-           (newline)
-           (set! result
-                 (dbi-get_row db))) result))
+  (dbi-query db query)
+  (let loop ((acc '()))    
+    (let ((row (dbi-get_row db)))
+      (if row                         
+          (loop (cons (sql-row->scheme-alist row) acc))       
+          (reverse acc)))))
 
 (define (file-sha256 path)
   "Computes the SHA-256 of a file and returns a lowercase hexadecimal string."
