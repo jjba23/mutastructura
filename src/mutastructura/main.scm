@@ -58,12 +58,18 @@ Mutastructura: Migrations
 ---------------------------------------------------------
 "
               migration-files))
+    ;; Start the Transaction
+    (dbi-query db-obj "BEGIN;")
     (for-each (lambda (migration)
                 (let* ((contents (call-with-input-file migration
                                    get-string-all))
                        (statements (string-split-to-queries contents)))
                   (for-each (run-statement-on-db db-obj) statements)))
               migration-files)
+    ;; On Success: Commit
+    (dbi-query db-obj "COMMIT;")
+    (display "
+Migrations completed successfully and committed.")
     (display "\nClosing database...")
     (dbi-close db-obj)
 
