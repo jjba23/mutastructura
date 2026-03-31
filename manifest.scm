@@ -41,6 +41,7 @@
                           guile-3.0-latest
                           guile-dbi
                           guile-dbd-sqlite3
+                          guile-gcrypt
                           watchexec
                           texinfo
                           guile-documenta

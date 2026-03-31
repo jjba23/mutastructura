@@ -24,10 +24,11 @@
   #:use-module (ice-9 string-fun)
   #:use-module (dbi dbi)
   #:use-module (ice-9 ftw)
+  #:use-module (gcrypt hash)
+  #:use-module (gcrypt base16)
   #:export (main))
 
 (define* (main #:key (args (command-line)))
-  
   (let* ((option-spec '((resources (single-char #\r)
                                    (value #t))
                         (migrations (single-char #\m)
@@ -73,9 +74,12 @@ Mutastructura: Migrations
 
 (define (run-migration-file db)
   (lambda (path)
-    (let* ((contents (call-with-input-file path
+    (let* ((migration-sha (file-sha256 path))
+           (contents (call-with-input-file path
                        get-string-all))
            (statements (string-split-to-queries contents)))
+      (display (format #f "\nmigration file: ~a" path))
+      (display (format #f "\nmigration sha256: ~a" migration-sha))
       (for-each (run-statement-on-db db) statements))))
 
 (define (run-statement-on-db db)
@@ -102,6 +106,14 @@ Mutastructura: Migrations
     (_ (raise-exception (make-exception-with-message (format #f
                                                       "Unknown database type: ~a"
                                                       database))))))
+
+(define (file-sha256 path)
+  "Computes the SHA-256 of a file and returns a lowercase hexadecimal string."
+  (call-with-input-file path
+    (lambda (port)
+      (let ((hash-bytevector (port-sha256 port)))
+        (string-downcase (bytevector->base16-string hash-bytevector))))))
+
 (define (string-split-to-queries sql-string)
   (let loop
     ((chars (string->list sql-string))
@@ -124,17 +136,17 @@ Mutastructura: Migrations
             ((normal)
              (cond
                ((char=? c #\')
-                 ;Enter single-quote string literal
+                ;; Enter single-quote string literal
                 (loop rest
                       'string
                       (cons c current-acc) queries))
                ((char=? c #\")
-                 ;Enter double-quote identifier
+                ;; Enter double-quote identifier
                 (loop rest
                       'identifier
                       (cons c current-acc) queries))
                ((char=? c #\;)
-                 ;Query finished! (Because we are in 'normal' state)
+                ;; Query finished! (Because we are in 'normal' state)
                 (let ((query (string-trim (list->string (reverse current-acc)))))
                   (loop rest
                         'normal

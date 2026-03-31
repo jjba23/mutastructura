@@ -24,6 +24,7 @@
              ((guix build utils)
               #:select (with-directory-excursion ))
              (gnu packages)
+             (gnu packages gnupg)
              (gnu packages bash)
              (gnu packages guile)
              (gnu packages guile-xyz))
@@ -57,7 +58,7 @@
 
     (build-system guile-build-system)
     (native-inputs (list guile-3.0))
-    (propagated-inputs (list guile-dbi guile-dbd-sqlite3))
+    (propagated-inputs (list guile-dbi guile-dbd-sqlite3 guile-gcrypt))
     (inputs (list guile-3.0 bash-minimal))
     (synopsis "")
     (description "")
