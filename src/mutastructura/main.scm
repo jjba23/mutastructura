@@ -19,13 +19,11 @@
   #:declarative? #f
   #:use-module (ice-9 getopt-long)
   #:use-module (ice-9 textual-ports)
+  #:use-module (ice-9 exceptions)
   #:use-module (ice-9 match)
   #:use-module (dbi dbi)
   #:use-module (ice-9 ftw)
   #:export (main))
-
-(define (whitespace-only? str)
-  (string-every char-whitespace? str))
 
 (define* (main #:key (args (command-line)))
   
@@ -41,25 +39,17 @@
                                   (value #t)
                                   (required? #t))))
          (options (getopt-long args option-spec))
-         (migrations (option-ref options
-                                 'migrations #f))
+         (migrations-path (option-ref options
+                                      'migrations #f))
          (connection (option-ref options
                                  'connection #f))
          (database (string->symbol (option-ref options
                                                'database #f)))
          (resources (option-ref options
                                 'resources #f))
-         (db-type (match database
-                    ('postgresql "postgresql")
-                    ('mysql "mysql")
-                    ('sqlite "sqlite3")))
+         (db-type (parse-db-type database))
          (db-obj (dbi-open db-type connection))
-         (raw-migration-files (scandir migrations
-                                       (lambda (file)
-                                         (string-suffix? ".sql" file))))
-         (migration-files (map (lambda (rm)
-                                 (format #f "~a/~a" migrations rm))
-                               raw-migration-files)))
+         (migration-files (scandir-for-sql migrations-path)))
     (display (format #f
               "
 ---------------------------------------------------------
@@ -71,19 +61,43 @@ Mutastructura: Migrations
     (for-each (lambda (migration)
                 (let* ((contents (call-with-input-file migration
                                    get-string-all))
-                       (statements (map string-trim
-                                        (string-split contents #\;)))
-                       (qs (filter (lambda (s)
-                                     (not (whitespace-only? s))) statements)))
-                  (for-each (lambda (q)
-                              (newline)
-                              (newline)
-                              (display q)
-                              (dbi-query db-obj q)
-                              (newline)
-                              (display db-obj)) qs))) migration-files)
+                       (statements (string-split-to-queries contents)))
+                  (for-each (run-statement-on-db db-obj) statements)))
+              migration-files)
     (display "\nClosing database...")
     (dbi-close db-obj)
 
     ))
 
+(define (run-statement-on-db db)
+  (lambda (stmt)
+    (display (format #f "\n\n~a" stmt))
+    (dbi-query db stmt)
+    (display (format #f "\n~a" db))))
+
+(define (whitespace-only? str)
+  (string-every char-whitespace? str))
+
+(define (is-not-whitespace-only? s)
+  (not (whitespace-only? s)))
+
+(define (string-split-to-queries s)
+  (filter is-not-whitespace-only?
+          (map string-trim
+               (string-split s #\;))))
+
+(define (scandir-for-sql path)
+  (map (lambda (file)
+         (format #f "~a/~a" path file))
+       (scandir path
+                (lambda (file)
+                  (string-suffix? ".sql" file)))))
+
+(define (parse-db-type database)
+  (match database
+    ('postgresql "postgresql")
+    ('mysql "mysql")
+    ('sqlite3 "sqlite3")
+    (_ (raise-exception (make-exception-with-message (format #f
+                                                      "Unknown database type: ~a"
+                                                      database))))))
