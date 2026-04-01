@@ -20,6 +20,7 @@
   #:use-module (srfi srfi-9)
   #:use-module (ice-9 exceptions)
   #:use-module (ice-9 string-fun)
+  #:use-module (ice-9 textual-ports)
   #:use-module (dbi dbi)
   #:use-module (mutastructura prelude)
   #:export (symbols->sql-columns-list sql-row->scheme-alist
@@ -30,6 +31,7 @@
                                       string-split-to-queries
                                       value->sql-literal
                                       pair->sql-assignment
+                                      run-migration-file
                                       with-transaction
                                       run-stmt))
 
@@ -56,9 +58,12 @@
                                 ((eq? 0
                                       (car st))
                                  (dbi-query db "COMMIT")
-                                 (display "\n\n[SUCCESS] COMMIT TRANSACTION SUCCESSFULLY")#t)
-                                (else (display (format #f
-                                                       "\n\n[ERROR] ~a\n"
+                                 (display
+                                  "
+
+[SUCCESS] COMMIT TRANSACTION SUCCESSFULLY")
+                                 #t)
+                                (else (display (format #f "\n\n[ERROR] ~a\n"
                                                        (cdr st)))
                                       (raise-exception (make-exception-with-message
                                                         (format #f "~a"
@@ -66,7 +71,8 @@
 
 (define (get-all-rows db query)
   (dbi-query db query)
-  (let loop ((acc '()))
+  (let loop
+    ((acc '()))
     (let ((row (dbi-get_row db)))
       (if (not (nil? row))
           (loop (cons (sql-row->scheme-alist row) acc))
@@ -229,3 +235,17 @@
                        'block-comment
                        (cons c current-acc) queries))))))))
 
+(define (run-migration-file db)
+  (lambda (path)
+    (let* ((migration-sha (file-sha256 path))
+           (contents (call-with-input-file path
+                       get-string-all))
+           (statements (string-split-to-queries contents)))
+      (display (format #f "\n>>= MIGRATION: ~a" path))
+      (display (format #f "\nSHA256: ~a" migration-sha))
+      (for-each (run-stmt db) statements)
+      ((run-stmt db)
+       (format #f
+        "INSERT INTO migrations_history (name, checksum) VALUES (~a, ~a)"
+        (value->sql-literal (filename-from-path path))
+        (value->sql-literal migration-sha))))))

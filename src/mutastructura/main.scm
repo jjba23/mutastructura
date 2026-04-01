@@ -23,7 +23,6 @@
   #:use-module (ice-9 getopt-long)
   #:use-module (ice-9 match)
   #:use-module (ice-9 string-fun)
-  #:use-module (ice-9 textual-ports)
   #:use-module (mutastructura prelude)
   #:use-module (mutastructura persistence util)
   #:use-module (srfi srfi-1)
@@ -131,21 +130,6 @@ MIGRATIONS COMPLETED SUCCESSFULLY
 
     (display "\nCLOSING DATABASE...\n")
     (dbi-close db)))
-
-(define (run-migration-file db)
-  (lambda (path)
-    (let* ((migration-sha (file-sha256 path))
-           (contents (call-with-input-file path
-                       get-string-all))
-           (statements (string-split-to-queries contents)))
-      (display (format #f "\n>>= MIGRATION: ~a" path))
-      (display (format #f "\nSHA256: ~a" migration-sha))
-      (for-each (run-stmt db) statements)
-      ((run-stmt db)
-       (format #f
-        "INSERT INTO migrations_history (name, checksum) VALUES (~a, ~a)"
-        (value->sql-literal (filename-from-path path))
-        (value->sql-literal migration-sha))))))
 
 (define (parse-db-type database)
   (match database
