@@ -50,13 +50,13 @@ Mutastructura provides a declarative, transactional approach to managing your da
 At its core, the orchestrator acts as a command-line utility that accepts your connection parameters and target files. 
 
 When invoked, Mutastructura:
-1. Opens a connection to your specified database engine.
-2. Queries the historical ledger (~migrations_history~) to see which migrations have already crossed the Rubicon.
-3. If no history exists, it initializes the schema via a genesis file (~0-init.sql~).
-4. Scans your provided migrations directory, generating SHA256 hashes for each file.
-5. Safely splits the SQL files into individual statements.
-6. Executes the statements synchronously.
-7. Commits the transaction and gracefully closes the connection.
+- Opens a connection to your specified database engine.
+- Queries the historical ledger (~migrations_history~) to see which migrations have already run, and  crossed the Rubicon.
+- If no history exists, it initializes the schema via platform-specific genesis files (~mutastructura-init.sql~).
+- Scans your provided migrations directory, generating SHA256 hashes for each file.
+- Safely splits the SQL files into individual statements.
+- Executes the statements synchronously.
+- Commits the transaction and gracefully closes the connection.
 
 -----------------
 
@@ -84,7 +84,7 @@ guix time-machine --channels=channels.scm -- \
 ** Argument Details
 - ~-d~ / ~--database~ :: The engine you are targeting (~sqlite3~, ~postgresql~, ~mysql~).
 - ~-c~ / ~--connection~ :: The connection string or path to your database.
-- ~-m~ / ~--migrations~ :: The path to your ~*.sql~ migration files.
+- ~-m~ / ~--migrations~ :: The path to your ~*.sql~ migration files directory.
 - ~-r~ / ~--resources~ :: (optional) Path to internal application resources (used for development and installation, bundled from ./resources dir).
 
 ----------------
