@@ -40,7 +40,14 @@
 (define (run-stmt db)
   (lambda (stmt)
     (format #t "\n\n~a" stmt)
-    (dbi-query db stmt)))
+    (dbi-query db stmt)
+    (let* ((st (dbi-get_status db)))
+      (cond
+        ((eq? 0
+              (car st))
+         #t)
+        (else (raise-exception (make-exception-with-message (format #f "~a"
+                                                                    (cdr st)))))))))
 
 (define (with-transaction db thunk)
   (with-exception-handler (lambda (ex)
