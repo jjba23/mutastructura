@@ -66,10 +66,9 @@
 
 (define (get-all-rows db query)
   (dbi-query db query)
-  (let loop
-    ((acc '()))
+  (let loop ((acc '()))
     (let ((row (dbi-get_row db)))
-      (if row
+      (if (not (nil? row))
           (loop (cons (sql-row->scheme-alist row) acc))
           (reverse acc)))))
 

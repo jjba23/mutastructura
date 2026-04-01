@@ -79,20 +79,40 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
                                    (format #f
                                     "~a/application-migrations/~a/mutastructura-init.sql"
                                     resources db-type))))))
+         (_ (set! migrations-history
+                  (get-all-rows db "SELECT * FROM migrations_history")))
          (migration-files (scandir-for-sql migrations-path))
          (file-checksums (map file-sha256 migration-files))
          (migration-entries (zip migration-files file-checksums))
-         (to-run-migrations (map cdr
-                                 (filter (lambda (e)
-                                           (find (lambda (mh)
-                                                   (and (equal? (car e)
-                                                                (assq-ref mh
-                                                                          'name))
-                                                        (equal? (cdr e)
-                                                                (assq-ref mh
-                                                                          'checksum))))
-                                                 migrations-history))
-                                         migration-entries))))
+         (mws (flatten-1 (map (lambda (mh)
+                              (map (lambda (me)
+                                     (list me mh)) migration-entries))
+                            migrations-history)))
+         (_ (begin
+              (newline)
+              (write mws)))
+         (xs (map (lambda (e)
+                    (newline)
+                    (write e)
+                    (newline)
+                    (display (format #f
+                                     "\n\nentry name: ~a, entry checksum: ~a\n"
+                                     (filename-from-path (car (car e)))
+                                     (cadr (car e))))
+                    (display (format #f "\n\nmh name: ~a, mh checksum: ~a\n"
+                                     (assq-ref (cadr e)
+                                               'name)
+                                     (assq-ref (cadr e)
+                                               'checksum)))
+                    (and (equal? (filename-from-path (car (car e)))
+                                 (assq-ref (cadr e)
+                                           'name))
+                         (equal? (cadr (car e))
+                                 (assq-ref (cadr e)
+                                           'checksum)))) mws))
+
+         (_ (write xs))
+         (to-run-migrations (map car xs)))
     (display (format #f "
 ----------------------------
 LOADING SCHEMA MIGRATIONS:
@@ -124,7 +144,7 @@ MIGRATIONS COMPLETED SUCCESSFULLY")))
       ((run-stmt db)
        (format #f
         "INSERT INTO migrations_history (name, checksum) VALUES (~a, ~a)"
-        (value->sql-literal (car (take-right (string-split path #\/) 1)))
+        (value->sql-literal (filename-from-path path))
         (value->sql-literal migration-sha))))))
 
 (define (parse-db-type database)

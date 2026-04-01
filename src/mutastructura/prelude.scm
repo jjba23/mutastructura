@@ -25,7 +25,10 @@
   #:use-module (ice-9 ftw)
   #:use-module (gcrypt hash)
   #:use-module (gcrypt base16)
-  #:export (file-sha256 scandir-for-sql whitespace-only?))
+  #:export (filename-from-path file-sha256 scandir-for-sql whitespace-only? all flatten flatten-1))
+
+(define (filename-from-path path)
+  (car (take-right (string-split path #\/) 1)))
 
 (define (file-sha256 path)
   "Computes the SHA-256 of a file and returns a lowercase hexadecimal string."
@@ -43,3 +46,21 @@
 
 (define (whitespace-only? str)
   (string-every char-whitespace? str))
+
+(define (all lst)
+  (or (empty? lst)  
+      (and (car lst)
+           (all (cdr lst)))))
+
+(define (flatten x)
+  (cond ((null? x) '())
+        ((pair? x) (append (flatten (car x)) (flatten (cdr x))))
+        (else (list x))))
+
+(define (flatten-1 lst)
+  (fold-right (lambda (x acc)
+                (if (list? x)
+                    (append x acc)
+                    (cons x acc)))
+              '()
+              lst))
