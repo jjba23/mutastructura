@@ -1,4 +1,4 @@
-;;; mutastructura - the CI/CD orchestrator written in Guile Scheme
+;;; MUTASTRUCTURA - Relational Schema Migrations Powered by Lisp
 
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 

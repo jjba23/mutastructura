@@ -1,4 +1,4 @@
-;;; Mutastructura
+;;; MUTASTRUCTURA - Relational Schema Migrations Powered by Lisp
 
 ;; Copyright © Josep Jesus Bigorra Algaba
 

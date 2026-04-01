@@ -1,3 +1,5 @@
+;;; MUTASTRUCTURA - Relational Schema Migrations Powered by Lisp
+
 (list (channel
         (name 'guix)
         (url "https://git.guix.gnu.org/guix.git")
