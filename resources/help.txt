@@ -10,7 +10,7 @@ OPTIONS:
     -h, --help
         Display this help message and exit.
     -d, --database
-        The engine you are targeting (~sqlite3~, ~postgresql~, ~mysql~).
+        The engine you are targeting (sqlite3, postgresql, mysql).
     -c, --connection
         The connection string or path to your database.
     -m, --migrations
