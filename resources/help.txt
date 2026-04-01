@@ -1,15 +1,22 @@
 
 +----------------------------------------------------------------------------+
-Mutastructura:
+MUTASTRUCTURA - Relational Schema Migrations Powered by Lisp
     
     See more at: https://codeberg.org/jjba23/mutastructura
     Software licensed under the GNU AGPL v3 or newer.
     
 USAGE: mutastructura [OPTIONS]
 OPTIONS:
-    TODO!
-        
     -h, --help
         Display this help message and exit.
+    -d, --database
+        The engine you are targeting (~sqlite3~, ~postgresql~, ~mysql~).
+    -c, --connection
+        The connection string or path to your database.
+    -m, --migrations
+        The path to your ~*.sql~ migration files.
+    -r, --resources
+        (optional) Path to internal application resources (used for development and installation)
+        bundled from ./resources dir
 
 +----------------------------------------------------------------------------+

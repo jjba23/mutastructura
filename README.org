@@ -61,7 +61,12 @@ When invoked, Mutastructura:
 
 The project is written mostly in Lisp (Guile Scheme) and uses [[https://codeberg.org/jjba23/maak][Maak, the infinitely extensible command-runner]] as automation system with GNU Guix package manager and build system, making reproducibility and devex first-class concerns, not afterthoughts.
 
-To command the orchestrator, you must provide it with the necessary tactical parameters:
+See a quick help page:
+#+begin_src
+mutastructura --help
+#+end_src
+
+Run easily and reproducibly with Maak + Guix, or use directly Guile, or load a REPL (like Arei)
 
 #+BEGIN_SRC sh
 maak run # or maak dev-run
@@ -77,7 +82,7 @@ guix time-machine --channels=channels.scm -- \
 - ~-d~ / ~--database~ :: The engine you are targeting (~sqlite3~, ~postgresql~, ~mysql~).
 - ~-c~ / ~--connection~ :: The connection string or path to your database.
 - ~-m~ / ~--migrations~ :: The path to your ~*.sql~ migration files.
-- ~-r~ / ~--resources~ :: Path to internal application resources (used for development and installation, bundled from ./resources dir).
+- ~-r~ / ~--resources~ :: (optional) Path to internal application resources (used for development and installation, bundled from ./resources dir).
 
 ----------------
 
