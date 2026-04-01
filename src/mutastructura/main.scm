@@ -29,15 +29,7 @@
   #:export (main))
 
 (define* (main #:key (args (command-line)))
-  (display "
----------------------------------------------------------
-MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
-
-      🏛️  M U T A S T R U C T U R A  🏛️
-
-     _ _ V E N I • V I D I • L I S P _ _
-
-")
+  (log-banner)
   (let* ((option-spec '((resources (single-char #\r)
                                    (value #t))
                         (migrations (single-char #\m)
@@ -89,27 +81,49 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
 
       (cond
         ((nil? to-run-migrations)
-         (format #t "
-----------------------------
-NOTHING TO DO!
-"))
-        (else (format #t "
-----------------------------
-MIGRATIONS TO RUN:
-
-")
-              (write to-run-migrations)
-              (format #t "\n\n")
+         (log-nothing-to-do))
+        (else (log-migrations-to-run to-run-migrations)
               ;; -- Execute Unapplied Migrations --
               (with-transaction db
                                 (lambda ()
                                   (for-each (run-migration-file db)
                                             to-run-migrations)
-                                  (format #t "
----------------------------------
-MIGRATIONS COMPLETED SUCCESSFULLY
-")))))
+                                  (log-migrations-successful)))))
 
       (format #t "\nCLOSING DATABASE...\n\n")
       (dbi-close db))))
 
+;;
+;; --- CLI Output ---
+;;
+(define (log-migrations-to-run xs)
+  (format #t "
+---------------------------------------------------------
+MIGRATIONS TO RUN:
+
+")
+  (write xs)
+  (format #t "\n\n"))
+
+(define (log-nothing-to-do)
+  (format #t "
+---------------------------------------------------------
+NOTHING TO DO!
+"))
+
+(define (log-migrations-successful)
+  (format #t "
+---------------------------------------------------------
+MIGRATIONS COMPLETED SUCCESSFULLY
+"))
+
+(define (log-banner)
+  (display "
+---------------------------------------------------------
+MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
+
+      🏛️  M U T A S T R U C T U R A  🏛️
+
+     _ _ V E N I • V I D I • L I S P _ _
+
+"))

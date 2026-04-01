@@ -1,4 +1,4 @@
-;;; MUTASTRUCTURA - Relational Schema Migrations Powered by Lisp
+;;; mutastructura - the CI/CD orchestrator written in Guile Scheme
 
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
@@ -35,19 +35,20 @@
                                       with-transaction
                                       run-stmt))
 
+;;; --- Core DB Execution ---
+
 (define (run-stmt db)
   (lambda (stmt)
-    (display (format #f "\n\n~a" stmt))
+    (format #t "\n\n~a" stmt)
     (dbi-query db stmt)))
 
 (define (with-transaction db thunk)
   (with-exception-handler (lambda (ex)
-                            (display
+                            (format #t
                              "
 [ERROR] MIGRATION FAILED, ROLL BACK CHANGES...
-")
-                            (display ex)
-                            (newline)
+~a
+" ex)
                             (dbi-query db "ROLLBACK")
                             (raise-exception ex))
                           (lambda ()
@@ -58,13 +59,14 @@
                                 ((eq? 0
                                       (car st))
                                  (dbi-query db "COMMIT")
-                                 (display
+                                 (format #t
                                   "
 
-[SUCCESS] COMMIT TRANSACTION SUCCESSFULLY")
+[SUCCESS] COMMIT TRANSACTION SUCCESSFULLY
+")
                                  #t)
-                                (else (display (format #f "\n\n[ERROR] ~a\n"
-                                                       (cdr st)))
+                                (else (format #t "\n\n[ERROR] ~a\n"
+                                              (cdr st))
                                       (raise-exception (make-exception-with-message
                                                         (format #f "~a"
                                                                 (cdr st))))))))))
@@ -74,9 +76,11 @@
   (let loop
     ((acc '()))
     (let ((row (dbi-get_row db)))
-      (if (not (nil? row))
+      (if (pair? row) ;Safely checks for valid row data
           (loop (cons (sql-row->scheme-alist row) acc))
           (reverse acc)))))
+
+;;; --- SQL Generation & Escaping ---
 
 (define (symbol->sql-column x)
   (string-replace-substring (symbol->string x) "-" "_"))
@@ -98,12 +102,14 @@
     (else (alist? (cdr obj)))))
 
 (define (sql-row->scheme-alist xs)
-  (cond
-    ((alist? xs)
-     (map (lambda (pair)
-            (cons (sql-column->symbol (car pair))
-                  (cdr pair))) xs))
-    (else xs)))
+  (if (alist? xs)
+      (map (lambda (pair)
+             (cons (sql-column->symbol (car pair))
+                   (cdr pair))) xs) xs))
+
+(define (escape-sql-string str)
+  "Helper to prevent SQL injection and syntax errors"
+  (string-replace-substring str "'" "''"))
 
 (define (pair->sql-assignment a)
   (cond
@@ -121,58 +127,56 @@
              (symbol->sql-column (car a))))
     (else (format #f "~a = '~a'"
                   (symbol->sql-column (car a))
-                  (cdr a)))))
+                  (escape-sql-string (format #f "~a"
+                                             (cdr a)))))))
 
 (define (value->sql-literal a)
   (cond
     ((number? a)
-     (format #f "~a" a))
+     (number->string a))
     ((eq? #t a)
      "1")
     ((eq? #f a)
      "0")
-    (else (format #f "'~a'" a))))
+    (else (format #f "'~a'"
+                  (escape-sql-string (format #f "~a" a))))))
+
+;;; --- SQL Parser ---
 
 (define (string-split-to-queries sql-string)
   (let loop
     ((chars (string->list sql-string))
-     (state 'normal) ;States: normal, string, identifier, line-comment, block-comment
-     (current-acc '()) ;Accumulates characters for the current query
-     (queries '())) ;Accumulates finished queries
-    
+     (state 'normal)
+     (current-acc '())
+     (queries '()))
+
     (if (null? chars)
-        ;; Base case: End of string. Clean up and collect the final query.
         (let ((final-query (string-trim (list->string (reverse current-acc)))))
           (reverse (if (whitespace-only? final-query) queries
                        (cons final-query queries))))
 
-        ;; Recursive case: Process the next character based on our current state.
         (let ((c (car chars))
               (rest (cdr chars)))
           (case state
             
-            ;; NORMAL STATE
             ((normal)
              (cond
                ((char=? c #\')
-                ;; Enter single-quote string literal
                 (loop rest
                       'string
                       (cons c current-acc) queries))
                ((char=? c #\")
-                ;; Enter double-quote identifier
                 (loop rest
                       'identifier
                       (cons c current-acc) queries))
                ((char=? c #\;)
-                ;; Query finished! (Because we are in 'normal' state)
                 (let ((query (string-trim (list->string (reverse current-acc)))))
                   (loop rest
                         'normal
                         '()
                         (if (whitespace-only? query) queries
                             (cons query queries)))))
-               ;; Check for start of line comment: --
+               ;; Check for --
                ((and (char=? c #\-)
                      (not (null? rest))
                      (char=? (car rest) #\-))
@@ -180,7 +184,7 @@
                       'line-comment
                       (cons #\-
                             (cons #\- current-acc)) queries))
-               ;; Check for start of block comment: /*
+               ;; Check for /*
                ((and (char=? c #\/)
                      (not (null? rest))
                      (char=? (car rest) #\*))
@@ -192,27 +196,40 @@
                            'normal
                            (cons c current-acc) queries))))
 
-            ;; INSIDE STRING LITERAL ('...')
             ((string)
-             (if (char=? c #\')
-                 (loop rest
-                       'normal
-                       (cons c current-acc) queries)
-                 (loop rest
+             ;; Handle escaped quotes ('') inside strings!
+             (if (and (char=? c #\')
+                      (not (null? rest))
+                      (char=? (car rest) #\'))
+                 (loop (cdr rest)
                        'string
-                       (cons c current-acc) queries)))
+                       (cons #\'
+                             (cons #\' current-acc)) queries)
+                 (if (char=? c #\')
+                     (loop rest
+                           'normal
+                           (cons c current-acc) queries)
+                     (loop rest
+                           'string
+                           (cons c current-acc) queries))))
 
-            ;; INSIDE IDENTIFIER ("...")
             ((identifier)
-             (if (char=? c #\")
-                 (loop rest
-                       'normal
-                       (cons c current-acc) queries)
-                 (loop rest
+             ;; Handle escaped double quotes ("") inside identifiers!
+             (if (and (char=? c #\")
+                      (not (null? rest))
+                      (char=? (car rest) #\"))
+                 (loop (cdr rest)
                        'identifier
-                       (cons c current-acc) queries)))
+                       (cons #\"
+                             (cons #\" current-acc)) queries)
+                 (if (char=? c #\")
+                     (loop rest
+                           'normal
+                           (cons c current-acc) queries)
+                     (loop rest
+                           'identifier
+                           (cons c current-acc) queries))))
 
-            ;; INSIDE LINE COMMENT (-- ...)
             ((line-comment)
              (if (char=? c #\newline)
                  (loop rest
@@ -222,7 +239,6 @@
                        'line-comment
                        (cons c current-acc) queries)))
 
-            ;; INSIDE BLOCK COMMENT (/* ... */)
             ((block-comment)
              (if (and (char=? c #\*)
                       (not (null? rest))
@@ -235,15 +251,17 @@
                        'block-comment
                        (cons c current-acc) queries))))))))
 
+;;; --- Migration Runner ---
+
 (define (run-migration-file db)
   (lambda (path)
     (let* ((migration-sha (file-sha256 path))
            (contents (call-with-input-file path
                        get-string-all))
            (statements (string-split-to-queries contents)))
-      (display (format #f "\n>>= MIGRATION: ~a" path))
-      (display (format #f "\nSHA256: ~a" migration-sha))
+      (format #t "\n>>= MIGRATION: ~a\nSHA256: ~a" path migration-sha)
       (for-each (run-stmt db) statements)
+
       ((run-stmt db)
        (format #f
         "INSERT INTO migrations_history (name, checksum) VALUES (~a, ~a)"

@@ -14,7 +14,7 @@ OPTIONS:
     -c, --connection
         The connection string or path to your database.
     -m, --migrations
-        The path to your ~*.sql~ migration files directory.
+        The path to your *.sql migration files directory.
     -r, --resources
         (optional) Path to internal application resources (used for development and installation)
         bundled from ./resources dir
