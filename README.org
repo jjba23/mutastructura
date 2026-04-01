@@ -24,21 +24,21 @@ Compatible with SQLite3, MySQL and PostgreSQL. Write your schema migrations and 
 
 -----------------
 
-[[https://jointhefreeworld.org/static-assets/mutastructura/mutastructura-small.png]]  
-
--------------------
-
 * Features (VIRTUTES)
 
 Mutastructura provides a declarative, transactional approach to managing your database states:
 
-- *Lingua Lisp:* Written purely in Guile Scheme, bringing functional purity and S-expression elegance to your CI/CD pipelines.
-- *Imperium of Databases:* Native ~dbi~ support to conquer ~postgresql~, ~mysql~, and ~sqlite3~. Auto-installs the schema management ~migrations_history~.
-- *Lex Faciens (Transactional Integrity):* Every migration is executed within a ~with-transaction~ block. If a migration fails, the legion retreats (~ROLLBACK~), ensuring your database is never left in a corrupted, half-migrated state.
-- *Intelligent Parsing:* Features a custom, finite-state-machine-based SQL lexer (~string-split-to-queries~).
-- *Immutable Ledgers:* Computes ~SHA256~ checksums of your migration files and tracks them in a ~migrations_history~ table, ensuring your schema evolution is strictly linear and tamper-evident.
+- Written purely in Guile Scheme, bringing functional purity and S-expression elegance to your CI/CD pipelines.
+- Native ~dbi~ support to conquer ~postgresql~, ~mysql~, and ~sqlite3~. Auto-installs the schema management ~migrations_history~.
+- Every migration is executed within a ~with-transaction~ block. If a migration fails, the legion retreats (~ROLLBACK~), ensuring your database is never left in a corrupted, half-migrated state.
+- Intelligent Parsing with a finite-state-machine-based SQL lexer (~string-split-to-queries~).
+- Computes ~SHA256~ checksums of your migration files and tracks them in a ~migrations_history~ table, ensuring your schema evolution is strictly linear and tamper-evident.
 
------------------  
+-----------------
+
+[[https://jointhefreeworld.org/static-assets/mutastructura/mutastructura-small.png]]  
+
+-------------------
 
 * Architectura
 
