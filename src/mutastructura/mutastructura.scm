@@ -25,39 +25,28 @@
   #:use-module (ice-9 ftw)
   #:use-module (gcrypt hash)
   #:use-module (gcrypt base16)
-  #:export (filename-from-path get-unapplied-migrations
-                               file-sha256
-                               scandir-for-sql
-                               whitespace-only?
-                               all
-                               parse-db-type
-                               flatten
-                               flatten-1))
-
-(define (filename-from-path path)
-  (car (take-right (string-split path #\/) 1)))
+  #:export (get-unapplied-migrations file-sha256
+                                     scandir-for-sql
+                                     whitespace-only?
+                                     parse-db-type
+                                     flatten
+                                     flatten-1))
 
 (define (file-sha256 path)
   "Computes the SHA-256 of a file and returns a lowercase hexadecimal string."
   (call-with-input-file path
     (lambda (port)
-      (let* ((hash-bytevector (port-sha256 port)))
-        (string-downcase (bytevector->base16-string hash-bytevector))))))
+      (string-downcase (bytevector->base16-string (port-sha256 port))))))
 
 (define (scandir-for-sql path)
   (map (lambda (file)
          (format #f "~a/~a" path file))
        (scandir path
                 (lambda (file)
-                  (string-suffix? ".sql" file)))))
+                  (string-suffix? ".sql" file)) string<?)))
 
 (define (whitespace-only? str)
   (string-every char-whitespace? str))
-
-(define (all lst)
-  (or (empty? lst)
-      (and (car lst)
-           (all (cdr lst)))))
 
 (define (flatten x)
   (cond
@@ -79,7 +68,7 @@
   (filter-map (lambda (entry)
                 (let* ((path (car entry))
                        (checksum (cadr entry))
-                       (fname (filename-from-path path))
+                       (fname (basename path))
                        (history-entry (find (lambda (h)
                                               (equal? (assq-ref h
                                                                 'name) fname))
@@ -97,10 +86,9 @@ WARNING: Checksum mismatch for already applied migration ~a!
               migration-entries))
 
 (define (parse-db-type database)
-  (match database
-    ('postgresql "postgresql")
-    ('mysql "mysql")
-    ('sqlite3 "sqlite3")
-    (_ (raise-exception (make-exception-with-message (format #f
-                                                      "UNKNOWN DATABASE TYPE: ~a"
-                                                      database))))))
+  (if (memq database
+            '(postgresql mysql sqlite3))
+      (symbol->string database)
+      (raise-exception (make-exception-with-message (format #f
+                                                     "UNKNOWN DATABASE TYPE: ~a"
+                                                     database)))))

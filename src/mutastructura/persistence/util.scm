@@ -247,5 +247,5 @@
       ((run-stmt db)
        (format #f
         "INSERT INTO migrations_history (name, checksum) VALUES (~a, ~a)"
-        (value->sql-literal (filename-from-path path))
+        (value->sql-literal (basename path))
         (value->sql-literal migration-sha))))))
