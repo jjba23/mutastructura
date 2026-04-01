@@ -20,9 +20,7 @@
 
 This tool ensures your relational schema and database state is exactly as you decree, incrementally.
 
-By reading your SQL migration scrolls, checking their cryptographic signatures, and executing them within strictly guarded transactions, it mutastructura aims to  manage your data structures with the discipline of a Roman legion.
-
-Compatible with SQLite3, MySQL and PostgreSQL
+Compatible with SQLite3, MySQL and PostgreSQL. Write your schema migrations and seeding easily, and in your native database dialect.
 
 -----------------
 
