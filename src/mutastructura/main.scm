@@ -81,38 +81,37 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
                                     resources db-type))))))
          (_ (set! migrations-history
                   (get-all-rows db "SELECT * FROM migrations_history")))
+
          (migration-files (scandir-for-sql migrations-path))
          (file-checksums (map file-sha256 migration-files))
          (migration-entries (zip migration-files file-checksums))
-         (mws (flatten-1 (map (lambda (mh)
-                              (map (lambda (me)
-                                     (list me mh)) migration-entries))
-                            migrations-history)))
-         (_ (begin
-              (newline)
-              (write mws)))
-         (xs (map (lambda (e)
-                    (newline)
-                    (write e)
-                    (newline)
-                    (display (format #f
-                                     "\n\nentry name: ~a, entry checksum: ~a\n"
-                                     (filename-from-path (car (car e)))
-                                     (cadr (car e))))
-                    (display (format #f "\n\nmh name: ~a, mh checksum: ~a\n"
-                                     (assq-ref (cadr e)
-                                               'name)
-                                     (assq-ref (cadr e)
-                                               'checksum)))
-                    (and (equal? (filename-from-path (car (car e)))
-                                 (assq-ref (cadr e)
-                                           'name))
-                         (equal? (cadr (car e))
-                                 (assq-ref (cadr e)
-                                           'checksum)))) mws))
 
-         (_ (write xs))
-         (to-run-migrations (map car xs)))
+         (to-run-migrations (filter-map (lambda (entry)
+                                          (let* ((path (car entry))
+                                                 (checksum (cadr entry))
+                                                 (fname (filename-from-path
+                                                         path))
+                                                 (history-entry (find (lambda 
+                                                                              (h)
+                                                                        (equal?
+                                                                         (assq-ref
+                                                                          h
+                                                                          'name)
+                                                                         fname))
+                                                                 migrations-history)))
+                                            (if history-entry
+                                                (begin
+                                                  (unless (equal? (assq-ref
+                                                                   history-entry
+                                                                   'checksum)
+                                                                  checksum)
+                                                    (display (format #f
+                                                              "
+WARNING: Checksum mismatch for already applied migration ~a!
+"
+                                                              fname))) #f)
+                                                path))) migration-entries)))
+    
     (display (format #f "
 ----------------------------
 LOADING SCHEMA MIGRATIONS:
@@ -127,9 +126,10 @@ LOADING SCHEMA MIGRATIONS:
                         (for-each (run-migration-file db) to-run-migrations)
                         (display "
 ---------------------------------
-MIGRATIONS COMPLETED SUCCESSFULLY")))
+MIGRATIONS COMPLETED SUCCESSFULLY
+")))
 
-    (display "\nCLOSING DATABASE...")
+    (display "\nCLOSING DATABASE...\n")
     (dbi-close db)))
 
 (define (run-migration-file db)
