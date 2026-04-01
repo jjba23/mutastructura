@@ -46,13 +46,15 @@ When invoked, Mutastructura:
 - Opens a connection to your specified database engine.
 - Queries the historical ledger (~migrations_history~) to see which migrations have already run, and  crossed the Rubicon.
 - If no history exists, it initializes the schema via platform-specific genesis files (~mutastructura-init.sql~).
-- Scans your provided migrations directory, and gets migrations to run, in *alphabetical order*
+- Scans your provided migrations directory, and gets migrations to run, in *chronological + alphabetical order* based on filename (in the shape of ~YYYY-MM-DD_HH:MM:SS_some-name.sql~, e.g. ~2026-04-01_21:54:00_init.sql~)
 - Generates SHA256 hashes for each file. Changing the file contents means changing the SHA and will trigger a WARNING
 - Safely splits the SQL files into individual statements.
 - Executes the statements synchronously.
 - Commits the transaction and gracefully closes the connection.
 
 Mutastructura follows a classic functional-core, imperative-shell architecture, divided into distinct modules that handle specific responsibilities.
+
+Migrations whose name ends in ~*.repeatable.sql~ will be deemed as repeatable and thus always executed.
 
 *** The Imperative Shell (CLI & Orchestration)
 Located in ~(mutastructura main)~, this is the commander of the program. It deals with all the "side-effects": reading command-line arguments, opening the database connection, reading from the file system, and printing outputs to the terminal. Its architecture is strictly sequential:

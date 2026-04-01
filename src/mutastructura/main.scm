@@ -67,10 +67,20 @@
     (let* ((migrations-history (get-all-rows db
                                 "SELECT * FROM migrations_history"))
            (migration-files (scandir-for-sql migrations-path))
-           (file-checksums (map file-sha256 migration-files))
+           (repeatable-migrations (filter (lambda (mf)
+                                            (string-suffix? ".repeatable.sql"
+                                                            mf))
+                                          migration-files))
+           (non-repeatable-migrations (filter (lambda (mf)
+                                                (not (string-suffix?
+                                                      ".repeatable.sql" mf)))
+                                              migration-files))
+           (file-checksums (map file-sha256 non-repeatable-migrations))
            (migration-entries (zip migration-files file-checksums))
-           (to-run-migrations (get-unapplied-migrations migration-entries
-                                                        migrations-history)))
+           (to-run-migrations (sort (append (get-unapplied-migrations
+                                             migration-entries
+                                             migrations-history)
+                                            repeatable-migrations) string<?)))
       
       ;; -- Output History Logs --
       (unless (nil? migrations-history)

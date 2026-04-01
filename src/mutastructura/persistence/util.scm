@@ -262,15 +262,16 @@
 
 (define (run-migration-file db)
   (lambda (path)
-    (let* ((migration-sha (file-sha256 path))
+    (let* ((is-repeatable (string-suffix? ".repeatable.sql" path))
+           (migration-sha (file-sha256 path))
            (contents (call-with-input-file path
                        get-string-all))
            (statements (string-split-to-queries contents)))
       (format #t "\n>>= MIGRATION: ~a\nSHA256: ~a" path migration-sha)
       (for-each (run-stmt db) statements)
-
-      ((run-stmt db)
-       (format #f
-        "INSERT INTO migrations_history (name, checksum) VALUES (~a, ~a)"
-        (value->sql-literal (basename path))
-        (value->sql-literal migration-sha))))))
+      (unless is-repeatable
+        ((run-stmt db)
+         (format #f
+          "INSERT INTO migrations_history (name, checksum) VALUES (~a, ~a)"
+          (value->sql-literal (basename path))
+          (value->sql-literal migration-sha)))))))
