@@ -22,7 +22,7 @@
   #:use-module (ice-9 string-fun)
   #:use-module (ice-9 textual-ports)
   #:use-module (dbi dbi)
-  #:use-module (mutastructura prelude)
+  #:use-module (mutastructura mutastructura)
   #:export (symbols->sql-columns-list sql-row->scheme-alist
                                       symbol->sql-column
                                       sql-column->symbol

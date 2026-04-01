@@ -23,7 +23,7 @@
   #:use-module (ice-9 getopt-long)
   #:use-module (ice-9 match)
   #:use-module (ice-9 string-fun)
-  #:use-module (mutastructura prelude)
+  #:use-module (mutastructura mutastructura)
   #:use-module (mutastructura persistence util)
   #:use-module (srfi srfi-1)
   #:export (main))
@@ -38,7 +38,6 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
      _ _ V E N I • V I D I • L I S P _ _
 
 ")
-
   (let* ((option-spec '((resources (single-char #\r)
                                    (value #t))
                         (migrations (single-char #\m)
@@ -60,82 +59,57 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
          (resources (option-ref options
                                 'resources #f))
          (db-type (parse-db-type database))
-         (db (dbi-open db-type connection))
-         (migrations-history (get-all-rows db
-                                           "SELECT * FROM migrations_history"))
-         (_ (begin
-              (display "\nMIGRATION HISTORY:\n\n")
-              (for-each (lambda (h)
-                          (write h)
-                          (newline)
-                          (newline)) migrations-history)
-              (newline)
-              (newline)))
-         (_ (when (nil? migrations-history)
+         (db (dbi-open db-type connection)))
+    
+    ;; --- Initialization Check ---
+    (let ((initial-history (get-all-rows db "SELECT * FROM migrations_history")))
+      (when (nil? initial-history)
+        (with-transaction db
+                          (lambda ()
+                            ((run-migration-file db)
+                             (format #f
+                              "~a/application-migrations/~a/mutastructura-init.sql"
+                              resources db-type))))))
+
+    ;; -- Fetch Migration History Data & Calculate Run List --
+    (let* ((migrations-history (get-all-rows db
+                                "SELECT * FROM migrations_history"))
+           (migration-files (scandir-for-sql migrations-path))
+           (file-checksums (map file-sha256 migration-files))
+           (migration-entries (zip migration-files file-checksums))
+           (to-run-migrations (get-unapplied-migrations migration-entries
+                                                        migrations-history)))
+      
+      ;; -- Output History Logs --
+      (unless (nil? migrations-history)
+        (format #t "\nFOUND MIGRATION HISTORY:\n\n")
+        (for-each (lambda (h)
+                    (write h)
+                    (format #t "\n\n")) migrations-history))
+
+      (cond
+        ((nil? to-run-migrations)
+         (format #t "
+----------------------------
+NOTHING TO DO!
+"))
+        (else (format #t "
+----------------------------
+MIGRATIONS TO RUN:
+
+")
+              (write to-run-migrations)
+              (format #t "\n\n")
+              ;; -- Execute Unapplied Migrations --
               (with-transaction db
                                 (lambda ()
-                                  ((run-migration-file db)
-                                   (format #f
-                                    "~a/application-migrations/~a/mutastructura-init.sql"
-                                    resources db-type))))))
-         (_ (set! migrations-history
-                  (get-all-rows db "SELECT * FROM migrations_history")))
-
-         (migration-files (scandir-for-sql migrations-path))
-         (file-checksums (map file-sha256 migration-files))
-         (migration-entries (zip migration-files file-checksums))
-
-         (to-run-migrations (filter-map (lambda (entry)
-                                          (let* ((path (car entry))
-                                                 (checksum (cadr entry))
-                                                 (fname (filename-from-path
-                                                         path))
-                                                 (history-entry (find (lambda 
-                                                                              (h)
-                                                                        (equal?
-                                                                         (assq-ref
-                                                                          h
-                                                                          'name)
-                                                                         fname))
-                                                                 migrations-history)))
-                                            (if history-entry
-                                                (begin
-                                                  (unless (equal? (assq-ref
-                                                                   history-entry
-                                                                   'checksum)
-                                                                  checksum)
-                                                    (display (format #f
-                                                              "
-WARNING: Checksum mismatch for already applied migration ~a!
-"
-                                                              fname))) #f)
-                                                path))) migration-entries)))
-    
-    (display (format #f "
-----------------------------
-LOADING SCHEMA MIGRATIONS:
-
-"))
-    (write to-run-migrations)
-    (newline)
-    (newline)
-
-    (with-transaction db
-                      (lambda ()
-                        (for-each (run-migration-file db) to-run-migrations)
-                        (display "
+                                  (for-each (run-migration-file db)
+                                            to-run-migrations)
+                                  (format #t "
 ---------------------------------
 MIGRATIONS COMPLETED SUCCESSFULLY
-")))
+")))))
 
-    (display "\nCLOSING DATABASE...\n")
-    (dbi-close db)))
+      (format #t "\nCLOSING DATABASE...\n\n")
+      (dbi-close db))))
 
-(define (parse-db-type database)
-  (match database
-    ('postgresql "postgresql")
-    ('mysql "mysql")
-    ('sqlite3 "sqlite3")
-    (_ (raise-exception (make-exception-with-message (format #f
-                                                      "UNKNOWN DATABASE TYPE: ~a"
-                                                      database))))))
