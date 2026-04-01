@@ -40,6 +40,35 @@ Mutastructura provides a declarative, transactional approach to managing your da
 
 -------------------
 
+* Usage (PRAECEPTA)
+
+The project is written mostly in Lisp (Guile Scheme) and uses [[https://codeberg.org/jjba23/maak][Maak, the infinitely extensible command-runner]] as automation system with GNU Guix package manager and build system, making reproducibility and devex first-class concerns, not afterthoughts.
+
+See a quick help page:
+#+begin_src
+mutastructura --help
+#+end_src
+
+Run easily and reproducibly with Maak + Guix, or use directly Guile, or load a REPL (like Arei)
+
+#+BEGIN_SRC sh
+maak run # or maak dev-run
+# or
+guix time-machine --channels=channels.scm -- \
+     shell -f guix.scm -- mutastructura \
+     --database sqlite3 \
+     --connection ./lucidplan-test.sqlite \
+     --migrations ./migrations/lucidplan
+#+END_SRC
+
+** Argument Details
+- ~-d~ / ~--database~ :: The engine you are targeting (~sqlite3~, ~postgresql~, ~mysql~).
+- ~-c~ / ~--connection~ :: The connection string or path to your database.
+- ~-m~ / ~--migrations~ :: The path to your ~*.sql~ migration files directory.
+- ~-r~ / ~--resources~ :: (optional) Path to internal application resources (used for development and installation, bundled from ./resources dir).
+
+----------------
+
 * How it works (ARCHITECTURA)
 
 When invoked, Mutastructura:
@@ -79,35 +108,6 @@ Located in ~(mutastructura persistence util)~, this is where the database intera
 Also housed in the persistence layer, the ~string-split-to-queries~ function is arguably the most advanced architectural component of the persistence layer. Rather than relying on fragile regular expressions to split SQL by semicolons, it uses a true Finite State Machine (FSM). It parses the SQL files for queries character-by-character.
 
 -----------------
-
-* Usage (PRAECEPTA)
-
-The project is written mostly in Lisp (Guile Scheme) and uses [[https://codeberg.org/jjba23/maak][Maak, the infinitely extensible command-runner]] as automation system with GNU Guix package manager and build system, making reproducibility and devex first-class concerns, not afterthoughts.
-
-See a quick help page:
-#+begin_src
-mutastructura --help
-#+end_src
-
-Run easily and reproducibly with Maak + Guix, or use directly Guile, or load a REPL (like Arei)
-
-#+BEGIN_SRC sh
-maak run # or maak dev-run
-# or
-guix time-machine --channels=channels.scm -- \
-     shell -f guix.scm -- mutastructura \
-     --database sqlite3 \
-     --connection ./lucidplan-test.sqlite \
-     --migrations ./migrations/lucidplan
-#+END_SRC
-
-** Argument Details
-- ~-d~ / ~--database~ :: The engine you are targeting (~sqlite3~, ~postgresql~, ~mysql~).
-- ~-c~ / ~--connection~ :: The connection string or path to your database.
-- ~-m~ / ~--migrations~ :: The path to your ~*.sql~ migration files directory.
-- ~-r~ / ~--resources~ :: (optional) Path to internal application resources (used for development and installation, bundled from ./resources dir).
-
-----------------
 
 * Licensing
 
