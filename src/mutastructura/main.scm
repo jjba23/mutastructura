@@ -62,7 +62,8 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
                                 'resources #f))
          (db-type (parse-db-type database))
          (db (dbi-open db-type connection))
-         (migrations-history (get-migrations-history db))
+         (migrations-history (get-all-rows db
+                                           "SELECT * FROM migrations_history"))
          (_ (begin
               (display "\nMIGRATION HISTORY:\n\n")
               (for-each (lambda (h)
@@ -76,31 +77,40 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
                                 (lambda ()
                                   ((run-migration-file db)
                                    (format #f
-                                    "~a/application-migrations/sqlite3/0-init.sql"
-                                    resources))))))
+                                    "~a/application-migrations/~a/mutastructura-init.sql"
+                                    resources db-type))))))
          (migration-files (scandir-for-sql migrations-path))
-         (file-checksums (map file-sha256 migration-files)))
+         (file-checksums (map file-sha256 migration-files))
+         (migration-entries (zip migration-files file-checksums))
+         (to-run-migrations (map cdr
+                                 (filter (lambda (e)
+                                           (find (lambda (mh)
+                                                   (and (equal? (car e)
+                                                                (assq-ref mh
+                                                                          'name))
+                                                        (equal? (cdr e)
+                                                                (assq-ref mh
+                                                                          'checksum))))
+                                                 migrations-history))
+                                         migration-entries))))
     (display (format #f "
 ----------------------------
 LOADING SCHEMA MIGRATIONS:
 
 "))
-    (write (zip migration-files file-checksums))
+    (write to-run-migrations)
     (newline)
     (newline)
 
     (with-transaction db
                       (lambda ()
-                        (for-each (run-migration-file db) migration-files)
+                        (for-each (run-migration-file db) to-run-migrations)
                         (display "
 ---------------------------------
 MIGRATIONS COMPLETED SUCCESSFULLY")))
 
     (display "\nCLOSING DATABASE...")
     (dbi-close db)))
-
-(define (get-migrations-history db)
-  (get-all-rows db "SELECT * FROM migrations_history"))
 
 (define (run-migration-file db)
   (lambda (path)
@@ -110,7 +120,12 @@ MIGRATIONS COMPLETED SUCCESSFULLY")))
            (statements (string-split-to-queries contents)))
       (display (format #f "\n>>= MIGRATION: ~a" path))
       (display (format #f "\nSHA256: ~a" migration-sha))
-      (for-each (run-stmt db) statements))))
+      (for-each (run-stmt db) statements)
+      ((run-stmt db)
+       (format #f
+        "INSERT INTO migrations_history (name, checksum) VALUES (~a, ~a)"
+        (value->sql-literal (car (take-right (string-split path #\/) 1)))
+        (value->sql-literal migration-sha))))))
 
 (define (parse-db-type database)
   (match database

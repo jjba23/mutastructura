@@ -1,3 +1,4 @@
 dist/
 .nrepl-port
 doc/
+lucidplan-test.sqlite
