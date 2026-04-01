@@ -124,6 +124,6 @@ MUTASTRUCTURA: Schema Migrations tooling powered by Lisp
 
       🏛️  M U T A S T R U C T U R A  🏛️
 
-     _ _ V E N I • V I D I • L I S P _ _
+     _ _ V E N I • V I D I • L I S P Y _ _
 
 "))
