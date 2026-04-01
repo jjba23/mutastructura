@@ -40,18 +40,41 @@ Mutastructura provides a declarative, transactional approach to managing your da
 
 -------------------
 
-* Architectura
-
-At its core, the orchestrator acts as a command-line utility that accepts your connection parameters and target files. 
+* How it works (ARCHITECTURA)
 
 When invoked, Mutastructura:
 - Opens a connection to your specified database engine.
 - Queries the historical ledger (~migrations_history~) to see which migrations have already run, and  crossed the Rubicon.
 - If no history exists, it initializes the schema via platform-specific genesis files (~mutastructura-init.sql~).
-- Scans your provided migrations directory, generating SHA256 hashes for each file.
+- Scans your provided migrations directory, and gets migrations to run, in *alphabetical order*
+- Generates SHA256 hashes for each file. Changing the file contents means changing the SHA and will trigger a WARNING
 - Safely splits the SQL files into individual statements.
 - Executes the statements synchronously.
 - Commits the transaction and gracefully closes the connection.
+
+Mutastructura follows a classic functional-core, imperative-shell architecture, divided into distinct modules that handle specific responsibilities.
+
+*** The Imperative Shell (CLI & Orchestration)
+Located in ~(mutastructura main)~, this is the commander of the program. It deals with all the "side-effects": reading command-line arguments, opening the database connection, reading from the file system, and printing outputs to the terminal. Its architecture is strictly sequential:
+
+Parse arguments.
+
+Ensure the ~migrations_history~ ledger exists (or initialize it).
+
+Fetch the database state and the local file state.
+
+Compare them to find unapplied migrations.
+
+Hand the unapplied files to the persistence layer for execution.
+
+*** The Functional Core (Utilities)
+Located in ~(mutastructura mutastructura)~, this layer is data structure handling, math, logic and a prelude. It does not concern with DB specifics. It handles cryptographic hashing ~(file-sha256)~, string manipulation, and list filtering. Also finds applicable state diffs to determine which migrations to run, with the use of ~filter-map~ and ~find~ to cleanly compute the diff.
+
+*** The Persistence Layer (Transactions & Execution)
+Located in ~(mutastructura persistence util)~, this is where the database interactions happen via the dbi library. Its most critical architectural feature is the with-transaction higher-order function. By wrapping all database executions inside a ~BEGIN~ and ~COMMIT~ block—and catching exceptions to trigger a ~ROLLBACK~ it guarantees that the database state is treated as atomic. It either succeeds entirely or fails cleanly.
+
+*** The Lexical State Machine (SQL Parser)
+Also housed in the persistence layer, the ~string-split-to-queries~ function is arguably the most advanced architectural component of the persistence layer. Rather than relying on fragile regular expressions to split SQL by semicolons, it uses a true Finite State Machine (FSM). It parses the SQL files for queries character-by-character.
 
 -----------------
 
