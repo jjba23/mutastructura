@@ -51,6 +51,7 @@ CREATE TABLE "ticket" (
 
 CREATE TABLE "ticket_assignee" (
 	"ticket_id"	varchar(36) NOT NULL,
+	"project_id"	varchar(36) NOT NULL,  
 	"user_id"	varchar(36) NOT NULL,
 	PRIMARY KEY("ticket_id")
 );
