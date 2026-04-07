@@ -75,7 +75,7 @@ When invoked, Mutastructura:
 - Opens a connection to your specified database engine.
 - Queries the historical ledger (~migrations_history~) to see which migrations have already run, and  crossed the Rubicon.
 - If no history exists, it initializes the schema via platform-specific genesis files (~mutastructura-init.sql~).
-- Scans your provided migrations directory, and gets migrations to run, in *chronological + alphabetical order* based on filename (in the shape of ~YYYY-MM-DD_HH:MM:SS_some-name.sql~, e.g. ~2026-04-01_21:54:00_init.sql~)
+- Scans your provided migrations directory, and gets migrations to run, in *chronological + alphabetical order* based on filename (anything works, but the best naming for this purpose is in the shape of ~YYYY-MM-DD_HH:MM:SS_some-name.sql~, e.g. ~2026-04-01_21:54:00_init.sql~)
 - Generates SHA256 hashes for each file. Changing the file contents means changing the SHA and will trigger a WARNING
 - Safely splits the SQL files into individual statements.
 - Executes the statements synchronously.
