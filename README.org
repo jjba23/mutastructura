@@ -189,6 +189,22 @@ https://www.gnu.org/licenses/fdl-1.3.html
 
 -----------------
 
+* REPL: Interactive workflow, developer power
+A REPL (Read-Eval-Print Loop) is an interactive environment, which can be used connected to your console, running application, language compiler and more, which gives you superpowers as an engineer 🦸🏼.
+
+Lisp dialects, more specifically Guile Scheme, have great support for this. I personally of course like to do this with [[https://guix.gnu.org/][Guix]], [[https://www.gnu.org/software/emacs/][Emacs]], ([[https://git.sr.ht/~abcdw/emacs-arei][Arei/Ares]] + [[https://github.com/vspinu/sesman][sesman]]) you can get an ultimate extensible powerful editor experience, miles ahead of traditional IDEs 🐂 .
+
+It fundamentally changes the development workflow by eliminating the slow /edit, save, compile, run/ cycle. Instead of writing a whole program and then running it to see what happens, you get a fast, conversational workflow. What does this mean for in practice?
+
+- *Incremental Development:* Write, test, inspect, evaluate one function or even one line at a time. Get immediate feedback without running the entire app.
+- *Powerful Debugging:* Forget adding ~print~ statements and restarting. You can pause, inspect objects, change values, and even redefine a broken function on the fly to test a fix in any environment (yes even in production, while running).
+- *Fast Prototyping & Learning:* Instantly experiment with a new library or API. Just load it and start calling functions to see how they work, which is much faster than only reading documentation.
+
+When integrated into your code editor, you can execute any piece of code (a line, a selection, or a file) with a keyboard shortcut and see the result instantly, creating a seamless and powerful development experience.
+
+-----------
+
+
 * Code of conduct
 
 This project adheres to the jointhefreeworld code of conduct. Find it here:
