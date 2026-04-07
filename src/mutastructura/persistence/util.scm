@@ -42,41 +42,55 @@
     (format #t "\n\n~a" stmt)
     (dbi-query db stmt)
     (let* ((st (dbi-get_status db)))
+      (format #t "\n\ndbi-get_status st: ~a\n" st)
       (cond
         ((eq? 0
               (car st))
+         #t)
+        ((eq? '(0 . "query ok"))
+         #t)
+        ((equal? '(1 . "not an error") st)
          #t)
         (else (raise-exception (make-exception-with-message (format #f "~a"
                                                                     (cdr st)))))))))
 
 (define (with-transaction db thunk)
-  (with-exception-handler (lambda (ex)
-                            (format #t
-                             "
-[ERROR] MIGRATION FAILED, ROLL BACK CHANGES...
-~a
-" ex)
-                            (dbi-query db "ROLLBACK")
-                            (raise-exception ex))
-                          (lambda ()
-                            (dbi-query db "BEGIN")
-                            (thunk)
-                            (let* ((st (dbi-get_status db)))
-                              (cond
-                                ((eq? 0
-                                      (car st))
-                                 (dbi-query db "COMMIT")
-                                 (format #t
-                                  "
+  (let* ((on-success (lambda (db)
+                       (dbi-query db "COMMIT")
+                       (format #t "
 
 [SUCCESS] COMMIT TRANSACTION SUCCESSFULLY
 ")
-                                 #t)
-                                (else (format #t "\n\n[ERROR] ~a\n"
-                                              (cdr st))
-                                      (raise-exception (make-exception-with-message
-                                                        (format #f "~a"
-                                                                (cdr st))))))))))
+                       #t))
+         (on-error (lambda (st)
+                     (format #t "\n\n[ERROR] ~a\n"
+                             (cdr st))
+                     (raise-exception (make-exception-with-message (format #f
+                                                                    "~a"
+                                                                    (cdr st)))))))
+    (with-exception-handler (lambda (ex)
+                              (format #t
+                               "
+[ERROR] MIGRATION FAILED, ROLL BACK CHANGES...
+~a
+"
+                               ex)
+                              (dbi-query db "ROLLBACK")
+                              (raise-exception ex))
+                            (lambda ()
+                              (dbi-query db "BEGIN")
+                              (thunk)
+                              (let* ((st (dbi-get_status db)))
+                                (cond
+                                  
+                                  ((eq? 0
+                                        (car st))
+                                   (on-success db))
+                                  ((eq? '(0 . "query ok"))
+                                   (on-success db))
+                                  ((equal? '(1 . "not an error") st)
+                                   (on-success db))
+                                  (else (on-error st))))))))
 
 (define (get-all-rows db query)
   (dbi-query db query)
@@ -268,7 +282,8 @@
                        get-string-all))
            (statements (string-split-to-queries contents)))
       (format #t "\n>>= MIGRATION: ~a\nSHA256: ~a" path migration-sha)
-      (for-each (run-stmt db) statements)
+      (unless (nil? statements)
+        (for-each (run-stmt db) statements))
       (unless is-repeatable
         ((run-stmt db)
          (format #f
