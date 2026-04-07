@@ -40,6 +40,72 @@ Mutastructura provides a declarative, transactional approach to managing your da
 
 -------------------
 
+* Installing
+
+mutastructura is officially distributed via:
+- Guix package manager
+- Podman/Docker images.
+
+/That being said, feel free to use it as you wish, within the terms of the GNU Affero General Public License v3 or newer./
+
+** On Guix
+
+Requirements:
+- *Guix*: The Guix package manager will ensure a reproducible working software, and will manage all needed dependencies for you.
+-  *Guile Scheme:*  This entire program is written using the official GNU extension language, Guile Scheme.
+
+If you just want to quickly install it to your profile:
+
+#+begin_src shell
+guix package --install-from-file=./guix.scm
+#+end_src
+
+Check the ~maak.scm~ and the ~guix.scm~ and ~manifest.scm~ for more details.
+
+For example, to enter an environment shell with mutastructura temporarily you can use:
+#+begin_src shell
+guix time-machine --channels=channels.scm -- shell -f guix.scm
+#+end_src
+
+You can also chain commands to it:
+#+begin_src shell
+guix time-machine --channels=channels.scm -- \
+     shell -f guix.scm -- mutastructura \
+     --database sqlite3 \
+     --connection ./lucidplan-test.sqlite  \
+     --migrations ./migrations/lucidplan
+#+end_src
+
+You can also run a dev shell (with manifest)
+#+begin_src shell
+guix time-machine --channels=channels.scm -- \
+     shell -m manifest.scm -- guile -L ./src -c '((@(mutastructura main) main))' \
+     --database sqlite3 \
+     --connection ./lucidplan-test.sqlite \
+     --migrations ./migrations/lucidplan \
+     --resources ./resources
+#+end_src
+
+mutastructura offers a ~--help~ / ~-h~ flag which will explain all options (also visible in ~resources/help.txt~). You should point mutastructura to the path to your migrations.
+
+
+** On Podman/Docker
+
+mutastructura is also available as a Docker container, from DockerHub (also compatible with Podman).
+
+https://hub.docker.com/repository/docker/jjba23/mutastructura/general
+
+You can also build images of mutastructura yourself, using ~guix pack~. See the ~maak.scm~ file for more.
+To load these tarball images, you can do ~podman load < my.tar.gz~
+
+You can run mutastructura from the container, and bind your local filesystem to give access, for example:
+
+#+begin_src shell
+ docker container run -v /home/joe:/home/joe \
+     docker.io/jjba23/mutastructura:latest mutastructura --help
+#+end_src
+
+
 * Usage (PRAECEPTA)
 
 The project is written mostly in Lisp (Guile Scheme) and uses [[https://codeberg.org/jjba23/maak][Maak, the infinitely extensible command-runner]] as automation system with GNU Guix package manager and build system, making reproducibility and devex first-class concerns, not afterthoughts.

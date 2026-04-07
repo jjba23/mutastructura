@@ -17,6 +17,8 @@
 
 (define-module (maak)
   #:use-module (maak maak)
+  #:use-module (ice-9 textual-ports)
+  #:use-module (ice-9 popen)  
   #:declarative? #t)
 
 ;; ====== Maak constants ======
@@ -37,6 +39,13 @@
 
 (define hot-reload-file-types
   '(scm))
+
+;; ====== Maak abstractions ======
+
+(define (syscall-with-output cmd)
+  (let* ((process (open-input-pipe cmd))
+         (process-output (get-string-all process)))
+    (close-pipe process) process-output))
 
 ;; ====== Maak tasks ======
 
@@ -81,11 +90,26 @@
   (time-machine-manifest-shell '("guix pack --file=./guix.scm"
                                  "--format=docker" "--image-tag=mutastructura"
                                  "-S /bin=bin"
-                                 "bash coreutils util-linux-with-udev guile")))
+                                 "bash coreutils util-linux-with-udev guile")
+                               #:verbose? #t))
+
+(define (push-docker-latest)
+  "Push the latest locally generated Docker image to Dockerhub."
+  ($ (list (~ "podman push localhost/~a:latest" project-name)
+           (~ "docker.io/jjba23/~a:latest" project-name))
+     #:verbose? #t))
+
+(define (push-docker-tag)
+  "Push the locally generated Docker image to Dockerhub."
+  ($ '("git fetch --all"))
+  (let* ((latest-tag (syscall-with-output "git describe --tags --abbrev=0")))
+    ($ (list (~ "podman push localhost/~a:latest" project-name)
+             (~ "docker.io/jjba23/~a:~a" project-name latest-tag))
+       #:verbose? #t)))
 
 (define (dev-run)
   "Run mutastructura (dev)."
-  ;;(delete-file-recursively some-test-db)
+  ;; (delete-file-recursively some-test-db)
   (time-machine-manifest-shell (list
                                 "guile -L ./src -c '((@(mutastructura main) main))'"
                                 (~ "--connection ~a" some-test-db)
@@ -96,7 +120,7 @@
 
 (define (run)
   "Run mutastructura."
-  ;;(delete-file-recursively some-test-db)
+  ;; (delete-file-recursively some-test-db)
   (time-machine-program-shell (list "mutastructura --database sqlite3"
                                     (~ "--connection ~a " some-test-db)
                                     "--migrations ./migrations/lucidplan")
