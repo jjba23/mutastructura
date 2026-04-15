@@ -18,7 +18,7 @@
 (define-module (maak)
   #:use-module (maak maak)
   #:use-module (ice-9 textual-ports)
-  #:use-module (ice-9 popen)  
+  #:use-module (ice-9 popen)
   #:declarative? #t)
 
 ;; ====== Maak constants ======
@@ -90,8 +90,10 @@
   (time-machine-manifest-shell '("guix pack --file=./guix.scm"
                                  "--format=docker" "--image-tag=mutastructura"
                                  "-S /bin=bin"
-                                 "bash coreutils util-linux-with-udev guile")
-                               #:verbose? #t))
+                                 "bash coreutils util-linux-with-udev guile > .docker-tag")
+                               #:verbose? #t)
+  ($ '("cat .docker-tag | xargs podman load --input"))
+  (delete-file-recursively ".docker-tag"))
 
 (define (push-docker-latest)
   "Push the latest locally generated Docker image to Dockerhub."
