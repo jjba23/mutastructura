@@ -15,7 +15,7 @@
 ;; You should have received a copy of the GNU Affero General Public License
 ;; along with mutastructura.  If not, see <https://www.gnu.org/licenses/>.
 
-(define-module (mutastructura persistence sql-parser)
+(define-module (mutastructura persistence migration-runner)
   #:declarative? #t
   #:use-module (srfi srfi-9)
   #:use-module (ice-9 exceptions)
