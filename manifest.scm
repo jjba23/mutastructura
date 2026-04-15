@@ -41,6 +41,8 @@
                           guile-3.0-latest
                           guile-dbi
                           guile-dbd-sqlite3
+                          guile-dbd-mysql
+                          guile-dbd-postgresql
                           guile-gcrypt
                           watchexec
                           texinfo
