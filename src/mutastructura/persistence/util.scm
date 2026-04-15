@@ -30,10 +30,11 @@
                                       get-all-rows
                                       value->sql-literal
                                       pair->sql-assignment
-                                      with-transaction
-                                      run-stmt))
+                                      run-stmt
+                                      with-transaction))
 
-;;; --- Core DB Execution ---
+;;; --- DB Execution ---
+
 
 (define (run-stmt db)
   (lambda (stmt)
@@ -51,6 +52,7 @@
          #t)
         (else (raise-exception (make-exception-with-message (format #f "~a"
                                                                     (cdr st)))))))))
+
 
 (define (with-transaction db thunk)
   (let* ((on-success (lambda (db)

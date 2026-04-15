@@ -23,6 +23,8 @@
   #:use-module (ice-9 textual-ports)
   #:use-module (dbi dbi)
   #:use-module (mutastructura mutastructura)
+  #:use-module (mutastructura persistence sql-parser)
+  #:use-module (mutastructura persistence util)
   #:export (run-migration-file))
 
 ;;; --- Migration Runner ---
