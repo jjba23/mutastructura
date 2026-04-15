@@ -25,6 +25,8 @@
   #:use-module (ice-9 string-fun)
   #:use-module (mutastructura mutastructura)
   #:use-module (mutastructura persistence util)
+  #:use-module (mutastructura persistence migration-runner)
+  #:use-module (mutastructura persistence sql-parser)
   #:use-module (srfi srfi-1)
   #:export (main))
 
