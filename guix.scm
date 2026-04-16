@@ -40,37 +40,38 @@
      (local-file %source-dir
                  #:recursive? #t
                  #:select? (git-predicate %source-dir)))
-    (arguments
-     `(#:source-directory "src"
-       #:phases (modify-phases %standard-phases
-                  (add-before 'build 'install-program-files
-                    (lambda* (#:key outputs #:allow-other-keys)
-                      (let ((bin (string-append (assoc-ref outputs "out")
-                                                "/bin"))
-                            (share (string-append (assoc-ref outputs "out")
-                                                  "/share")))
-                        (copy-recursively "resources"
-                                          (string-append share "/resources"))
-                        (install-file "scripts/mutastructura" bin)
-                        (install-file "scripts/log.bash"
-                                      (string-append share "/scripts/"))
-                        (chmod (string-append bin "/mutastructura") #o755)))))))
-
     (build-system guile-build-system)
+    (arguments
+     (list
+      #:source-directory "src"
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-before 'build 'install-program-files
+            (lambda _
+              (let* ((bin (string-append #$output "/bin"))
+                     (share (string-append #$output "/share")))
+                (copy-recursively "resources"
+                                  (string-append share "/resources"))
+                (install-file "scripts/mutastructura" bin)
+                (install-file "scripts/log.bash"
+                              (string-append share "/scripts/"))
+                (chmod (string-append bin "/mutastructura") #o755)))))))
     (native-inputs (list guile-3.0))
-    (propagated-inputs (list guile-dbi guile-dbd-sqlite3 guile-dbd-postgresql
-                             guile-dbd-mysql guile-gcrypt))
+    (propagated-inputs (list guile-dbi
+                             guile-dbd-mysql
+                             guile-dbd-sqlite3
+                             guile-dbd-postgresql
+                             guile-gcrypt))
     (inputs (list guile-3.0 bash-minimal))
-    (synopsis "Relational database schema migrations powered by Lisp")
-    (description
-     "Mutastructura provides a familiar, declarative and
-transactional approach to managing database states. Written in Guile Scheme,
-it exposes a user-friendly command-line interface and support for
-PostgreSQL, MySQL, and SQLite3.
-
-Features include executing migrations within transaction blocks and computing
-SHA256 checksums to track tamper-evident schema evolution in a @code{migrations_history} table.")
     (home-page "https://codeberg.org/jjba23/mutastructura")
+    (synopsis "Relational database schema migrations powered by Guile Scheme")
+    (description
+     "Mutastructura provides a familiar, declarative and transactional
+approach to managing database states. It exposes a user-friendly CLI
+and has support for PostgreSQL, MySQL, and SQLite.
+
+  Features include executing migrations transactionally and computing SHA256
+checksums to track schema evolution in a @code{migrations_history} table.")
     (license license:agpl3+)))
 
 mutastructura
