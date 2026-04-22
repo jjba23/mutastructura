@@ -43,7 +43,7 @@ Mutastructura provides a declarative, transactional approach to managing your da
 * Installing
 
 mutastructura is officially distributed via:
-- Guix package manager
+- Guix package manager - as ~mutastructura~ from ~(gnu packages databases)~ - or from the source code here
 - Podman/Docker images.
 
 /That being said, feel free to use it as you wish, within the terms of the GNU Affero General Public License v3 or newer./
