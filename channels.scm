@@ -4,7 +4,7 @@
         (name 'guix)
         (url "https://git.guix.gnu.org/guix.git")
         (branch "master")
-        (commit "46af8f33acc26fd51fffe9312d6ac5b83e738d45")
+        (commit "0fb918d61609f3aadc2d8ecc212926b3bdfabb4c")
         (introduction
          (make-channel-introduction "9edb3f66fd807b096b48283debdcddccfea34bad"
           (openpgp-fingerprint
