@@ -42,7 +42,26 @@ scheme_sources_dir="${store_dir}/share/guile/site/3.0"
 resources_dir="${store_dir}/share/resources"
 scripts_dir="${store_dir}/share/scripts"
 
-source "${scripts_dir}/log.bash"
+red_text='\033[0;31m'
+reset_text='\033[0m'
+
+log_error() {
+  if [ -z "${1}" ]; then
+    log_error "log_error was called without a message!"
+    return 1
+  fi
+
+  echo -e "${red_text}[error] $1${reset_text}" >&2
+}
+
+log_info() {
+  if [ -z "${1}" ]; then
+    log_error "log_info was called without a message!"
+    return 1
+  fi
+
+  echo -e "$1"
+}
 
 show_help() {
   cat "${resources_dir}/help.txt"

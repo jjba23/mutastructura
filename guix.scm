@@ -26,8 +26,10 @@
              (gnu packages)
              (gnu packages gnupg)
              (gnu packages bash)
+             (gnu packages base)
              (gnu packages guile)
-             (gnu packages guile-xyz))
+             (gnu packages guile-xyz)
+             (gnu packages linux))
 
 (define %source-dir
   (dirname (current-filename)))
@@ -44,6 +46,9 @@
     (arguments
      (list
       #:source-directory "src"
+      #:modules '((guix build guile-build-system)
+                  (guix build utils)
+                  (ice-9 match))
       #:phases
       #~(modify-phases %standard-phases
           (add-before 'build 'install-program-files
@@ -53,16 +58,28 @@
                 (copy-recursively "resources"
                                   (string-append share "/resources"))
                 (install-file "scripts/mutastructura" bin)
-                (install-file "scripts/log.bash"
-                              (string-append share "/scripts/"))
-                (chmod (string-append bin "/mutastructura") #o755)))))))
-    (native-inputs (list guile-3.0))
+                (chmod (string-append bin "/mutastructura") #o755))))
+          (add-after 'unpack 'fix-paths
+            (lambda* (#:key inputs #:allow-other-keys)
+              (for-each (match-lambda
+                          ((pattern program format-string)
+                           (substitute* "scripts/mutastructura"
+                             ((pattern)
+                              (format #f format-string
+                                      (search-input-file inputs
+                                                         (string-append "bin/"
+                                                          program)))))))
+                        '(("readlink -f " "readlink" "~s -f ")
+                          ("realpath " "realpath" "~s ")
+                          ("dirname " "dirname" "~s ")
+                          ("getopt " "getopt" "~s ")
+                          ("exec guile " "guile" "exec ~s "))))))))
     (propagated-inputs (list guile-dbi
                              guile-dbd-mysql
                              guile-dbd-sqlite3
                              guile-dbd-postgresql
                              guile-gcrypt))
-    (inputs (list guile-3.0 bash-minimal))
+    (inputs (list guile-3.0 bash-minimal coreutils util-linux))
     (home-page "https://codeberg.org/jjba23/mutastructura")
     (synopsis "Relational database schema migrations powered by Guile Scheme")
     (description
