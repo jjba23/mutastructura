@@ -54,6 +54,17 @@
                                 'resources #f))
          (db-type (parse-db-type database))
          (db (dbi-open db-type connection)))
+
+    ;; A connection the driver cannot report on is worth saying out loud, once,
+    ;; before anything runs.  The statements below still apply -- `dbi-query' is
+    ;; what runs them -- but the tool cannot then tell a statement that failed
+    ;; from one that went through, so the closing "completed successfully" has to
+    ;; own up to reading less than it usually does.
+    (when (eq? (statement-status (dbi-get_status db))
+               'unreported)
+      (format #t
+              "\n!! This ~a connection cannot be reported on by the driver.\n   Statements are still applied; their status cannot be read back.\n"
+              db-type))
     
     ;; --- Initialization Check ---
     (let ((initial-history (get-all-rows db "SELECT * FROM migrations_history")))

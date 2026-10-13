@@ -30,8 +30,49 @@
                                       get-all-rows
                                       value->sql-literal
                                       pair->sql-assignment
+                                      statement-status
+                                      status-unreported?
                                       run-stmt
                                       with-transaction))
+
+;;; --- Reading the driver's answer ---
+
+;; guile-dbi answers a statement with a pair: `(0 . "query ok")' when it went
+;; through, and `(1 . "<the message SQLite gave>')' when it did not.  A driver
+;; that cannot report on the handle at all answers with a message of guile-dbi's
+;; own -- `invalid module handle', or `file not found' when it was opened against
+;; something it did not bind -- rather than with anything SQLite said.  Those two
+;; are not the statement failing: `dbi-query' is what runs a statement and what
+;; raises when the connection is unusable, and the statements in a run like that
+;; are applied all the same.  So the three readings are kept apart, and only the
+;; third -- code 1 with a message the database itself wrote -- fails a migration.
+;;
+;; This used to be read with `(eq? 0 (car st))' and `(eq? '(0 . "query ok"))':
+;; the second can never hold (`eq?' on a freshly made list is #f), and the fall
+;; through to a raise turned every answer it did not recognise -- including a
+;; driver that could not answer -- into a failed migration, which rolled back a
+;; schema that had in fact been applied.
+(define (status-unreported? message)
+  "Whether MESSAGE is guile-dbi's own, rather than the database's."
+  (and (string? message)
+       (or (string=? message "invalid module handle")
+           (string=? message "file not found"))))
+
+(define (statement-status status)
+  "What STATUS -- the driver's reading of the last statement -- says happened.
+
+The answer is `ok', `unreported' for a status the driver cannot give, or the
+pair `(failed . MESSAGE)' with what the database said."
+  (cond
+    ((not (pair? status))
+     (cons 'failed (format #f "the driver answered with ~s" status)))
+    ((and (number? (car status)) (zero? (car status)))
+     'ok)
+    ((equal? (cdr status) "not an error")
+     'ok)
+    ((status-unreported? (cdr status))
+     'unreported)
+    (else (cons 'failed (cdr status)))))
 
 ;;; --- DB Execution ---
 
@@ -40,18 +81,14 @@
   (lambda (stmt)
     (format #t "\n\n~a" stmt)
     (dbi-query db stmt)
-    (let* ((st (dbi-get_status db)))
-      (format #t "\n\ndbi-get_status st: ~a\n" st)
+    (let* ((reading (statement-status (dbi-get_status db))))
       (cond
-        ((eq? 0
-              (car st))
-         #t)
-        ((eq? '(0 . "query ok"))
-         #t)
-        ((equal? '(1 . "not an error") st)
-         #t)
+        ;; A driver that cannot report is said so once, where the connection is
+        ;; opened, rather than once per statement; the statements themselves are
+        ;; applied either way.
+        ((or (eq? reading 'ok) (eq? reading 'unreported)) #t)
         (else (raise-exception (make-exception-with-message (format #f "~a"
-                                                                    (cdr st)))))))))
+                                                                    (cdr reading)))))))))
 
 
 (define (with-transaction db thunk)
@@ -80,17 +117,11 @@
                             (lambda ()
                               (dbi-query db "BEGIN")
                               (thunk)
-                              (let* ((st (dbi-get_status db)))
+                              (let* ((reading (statement-status (dbi-get_status db))))
                                 (cond
-                                  
-                                  ((eq? 0
-                                        (car st))
-                                   (on-success db))
-                                  ((eq? '(0 . "query ok"))
-                                   (on-success db))
-                                  ((equal? '(1 . "not an error") st)
-                                   (on-success db))
-                                  (else (on-error st))))))))
+                                  ((eq? reading 'ok) (on-success db))
+                                  ((eq? reading 'unreported) (on-success db))
+                                  (else (on-error reading))))))))
 
 (define (get-all-rows db query)
   (dbi-query db query)
