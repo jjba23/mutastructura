@@ -65,17 +65,19 @@ The answer is `ok', `unreported' for a status the driver cannot give, or the
 pair `(failed . MESSAGE)' with what the database said."
   (cond
     ((not (pair? status))
-     (cons 'failed (format #f "the driver answered with ~s" status)))
-    ((and (number? (car status)) (zero? (car status)))
+     (cons 'failed
+           (format #f "the driver answered with ~s" status)))
+    ((and (number? (car status))
+          (zero? (car status)))
      'ok)
     ((equal? (cdr status) "not an error")
      'ok)
     ((status-unreported? (cdr status))
      'unreported)
-    (else (cons 'failed (cdr status)))))
+    (else (cons 'failed
+                (cdr status)))))
 
 ;;; --- DB Execution ---
-
 
 (define (run-stmt db)
   (lambda (stmt)
@@ -86,10 +88,14 @@ pair `(failed . MESSAGE)' with what the database said."
         ;; A driver that cannot report is said so once, where the connection is
         ;; opened, rather than once per statement; the statements themselves are
         ;; applied either way.
-        ((or (eq? reading 'ok) (eq? reading 'unreported)) #t)
+        ((or (eq? reading
+                  'ok)
+             (eq? reading
+                  'unreported))
+         #t)
         (else (raise-exception (make-exception-with-message (format #f "~a"
-                                                                    (cdr reading)))))))))
-
+                                                                    (cdr
+                                                                     reading)))))))))
 
 (define (with-transaction db thunk)
   (let* ((on-success (lambda (db)
@@ -117,10 +123,15 @@ pair `(failed . MESSAGE)' with what the database said."
                             (lambda ()
                               (dbi-query db "BEGIN")
                               (thunk)
-                              (let* ((reading (statement-status (dbi-get_status db))))
+                              (let* ((reading (statement-status (dbi-get_status
+                                                                 db))))
                                 (cond
-                                  ((eq? reading 'ok) (on-success db))
-                                  ((eq? reading 'unreported) (on-success db))
+                                  ((eq? reading
+                                        'ok)
+                                   (on-success db))
+                                  ((eq? reading
+                                        'unreported)
+                                   (on-success db))
                                   (else (on-error reading))))))))
 
 (define (get-all-rows db query)
