@@ -8,7 +8,7 @@
 [[https://jointhefreeworld.org/ggg/dist/license-agpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
 
 
-/Relational Schema Migrations Powered by Lisp/
+/Schema Migrations Powered by Lisp/
 
 #+begin_src
  🏛️  M U T A S T R U C T U R A  🏛️
@@ -20,7 +20,7 @@
 
 This tool ensures your relational schema and database state is exactly as you decree, incrementally.
 
-Compatible with SQLite3, MySQL/MariaDB, PostgreSQL (and its compatibles: CockroachDB, YugabyteDB, TimescaleDB) and MongoDB. Write your schema migrations and seeding easily, and in your native database dialect -- SQL where there is SQL, JSON command documents where there is not.
+Compatible with SQLite3, MySQL/MariaDB, PostgreSQL (and its compatibles: CockroachDB, YugabyteDB, TimescaleDB) and MongoDB. Write your schema migrations and seeding easily, and in your native database dialect.
 
 -----------------
 
