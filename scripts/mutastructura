@@ -67,16 +67,43 @@ show_help() {
   cat "${resources_dir}/help.txt"
 }
 
-parsed_options=$(getopt -n "mutastructura" -o m:d:c:r:h \
-  --long migrations:,database:,connection:,resources:,help -- "$@")
+# The command is the first word: `mutastructura status -m ./migrations ...'.
+# Anything else is an option, and no word at all means `migrate', which is what
+# this program did before it had more than one thing to do.
+command_name="migrate"
+
+case "${1:-}" in
+  migrate | status | clean)
+    command_name="${1}"
+    shift
+    ;;
+  help | --help | -h)
+    show_help
+    exit 0
+    ;;
+  "" | -*) ;;
+  *)
+    # A word that is not a command and not an option.  Saying so beats
+    # migrating anyway because a typo happened to look like a file name.
+    log_error "unknown command '${1}'"
+    show_help
+    exit 1
+    ;;
+esac
+
+parsed_options=$(getopt -n "mutastructura" -o m:d:c:r:hv \
+  --long migrations:,database:,connection:,resources:,placeholder:,help,dry-run,verbose \
+  -- "$@")
 
 eval set -- "${parsed_options}"
 
 resources_arg="${resources_dir}"
+placeholder_args=()
 
 guile_cmd_args=(
   "-L" "${scheme_sources_dir}"
   "-c" "((@(mutastructura main) main))"
+  "--command" "${command_name}"
 )
 
 while true; do
@@ -103,6 +130,20 @@ while true; do
       shift 2
     fi
     ;;
+  --placeholder)
+    # Repeated --placeholder flags are collected into the one value the Guile
+    # side reads, comma-separated, which is the form its parser already knows.
+    placeholder_args+=("${2}")
+    shift 2
+    ;;
+  --dry-run)
+    guile_cmd_args+=("--dry-run")
+    shift
+    ;;
+  -v | --verbose)
+    guile_cmd_args+=("--verbose")
+    shift
+    ;;
   -h | --help)
     show_help
     exit 0
@@ -118,6 +159,23 @@ while true; do
     ;;
   esac
 done
+
+# Anything left over is not an option this program knows and was not consumed as
+# one: it is a word nobody asked for, and running anyway would be guessing.
+if [ "${#}" -gt 0 ]; then
+  log_error "unexpected argument '${1}'"
+  show_help
+  exit 1
+fi
+
+# The placeholders, as the one comma-separated value the Guile side parses.
+if [ "${#placeholder_args[@]}" -gt 0 ]; then
+  joined_placeholders=$(
+    IFS=,
+    echo "${placeholder_args[*]}"
+  )
+  guile_cmd_args+=("--placeholder" "${joined_placeholders}")
+fi
 
 # The resources
 guile_cmd_args+=("--resources" "${resources_arg}")

@@ -44,6 +44,13 @@
 ;;                  implicitly -- `CREATE TABLE' cannot be undone -- and saying
 ;;                  so plainly is better than pretending otherwise.
 ;;
+;;   refusals       SQLite's and MySQL's drivers report a refused statement in
+;;                  their status.  PostgreSQL's does not: it sends the query and
+;;                  the send is all it reports on, so a syntax error there looks
+;;                  exactly like a statement that worked.  What makes the error
+;;                  visible is asking the server a question it cannot answer
+;;                  wrongly -- see `dialect-verification-query'.
+;;
 ;; The switches below ask about *dialect*, not about an engine id, wherever the
 ;; two differ: CockroachDB speaks PostgreSQL's SQL and has no advisory locks, and
 ;; the PostgreSQL-compatibles (YugabyteDB, TimescaleDB, Citus) are reached
@@ -70,6 +77,9 @@
             dialect-unlock-statements
             dialect-lock-name
             dialect-transactional-ddl?
+            dialect-verification-query
+            dialect-may-abandon-rows?
+            dialect-readable-column
             dialect-history-ddl
             dialect-history-columns
             dialect-history-table-exists-query
@@ -218,9 +228,68 @@ MySQL cannot: `CREATE TABLE', `ALTER TABLE' and friends commit implicitly, which
 is a property of the server and not something a client can work around."
   (not (mysql-engine? engine)))
 
+(define (dialect-verification-query engine)
+  "A query whose answer proves ENGINE's last statement was accepted, or #f.
+
+guile-dbi's PostgreSQL driver has no way to report a refused statement: it sends
+the query, answers `query ok' when the *send* worked, and only unpacks a result
+when somebody asks for a row.  A migration with a syntax error in it therefore
+read as a success, and the ledger recorded a migration that never ran.
+
+What makes it visible is asking the server something that must come back with
+one row.  Inside a transaction that is proof: PostgreSQL refuses *every*
+statement after a failed one until the transaction ends, so a query that always
+has an answer coming back with none means the statement before it was refused.
+The question is asked only where the answer means something -- inside a
+transaction -- which is why the runner asks it there and why SQLite and MySQL,
+whose drivers do report a failure, are not asked anything at all."
+  (if (postgres-engine? engine) "SELECT 1 AS mutastructura_probe" #f))
+
 ;;; ---------------------------------------------------------------------------
 ;;; The ledger
 ;;; ---------------------------------------------------------------------------
+
+(define (dialect-may-abandon-rows? engine)
+  "Whether ENGINE's driver can stop reading a row and say nothing about it.
+
+guile-dbi's PostgreSQL driver unpacks a row from the table of types it knows and
+abandons the row for anything else -- `TIMESTAMP WITH TIME ZONE' among them.  The
+caller is then handed no rows, which is exactly what an empty table looks like,
+so a read there has to be checked after the fact.  The other drivers report a
+refusal and say so in the same breath, and SQLite's goes further: it ends even a
+*successful* read with a status of its own (`no more rows to get'), so asking it
+the same question would mistake a finished read for a broken one."
+  (postgres-engine? engine))
+
+(define (dialect-readable-column engine column)
+  "COLUMN -- a SQL column name -- as a SELECT expression ENGINE can unpack.
+
+The ledger's `installed_on' is the one column every engine has trouble with, and
+for a different reason each:
+
+guile-dbi's PostgreSQL driver unpacks the column types it knows and abandons the
+row for the rest, without raising anything.  `TIMESTAMP WITH TIME ZONE' (oid 1184)
+is one of the rest, and the ledger is made of it -- so the ledger read as empty on
+every PostgreSQL deployment, and an empty ledger means every migration is applied
+again, every run.
+
+guile-dbd-mysql hands a `DATETIME' back as the seconds since the epoch, which is
+true and unreadable.  A status table that says `1791987754' where it means a date
+is not reporting what the ledger says.
+
+Read as text, both arrive whole: the string a timestamp comes back as is the one
+the server itself would print, which is all the ledger is asked for -- when a
+migration was applied.  SQLite, which stores its timestamps as text already, is
+asked nothing."
+  (let* ((name (if (symbol? column) (symbol->string column) (format #f "~a" column)))
+         (quoted (dialect-quote-identifier engine name))
+         (timestamp? (member name '("installed_on" "applied_at"))))
+    (cond
+      ((and timestamp? (postgres-engine? engine))
+       (format #f "~a::text AS ~a" quoted quoted))
+      ((and timestamp? (mysql-engine? engine))
+       (format #f "DATE_FORMAT(~a, '%Y-%m-%d %H:%i:%s') AS ~a" quoted quoted))
+      (else quoted))))
 
 ;; The columns the ledger has when mutastructura creates it.
 (define history-columns

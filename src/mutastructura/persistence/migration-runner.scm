@@ -48,6 +48,10 @@
   #:use-module (mutastructura persistence util)
   #:use-module (mutastructura persistence dialect)
   #:use-module (mutastructura persistence sql-parser)
+  ;; As with the document runner next door, the operations are exported rather
+  ;; than reached through the vtable alone: a test wants to drive one of them
+  ;; against a real database, and a caller that has a session already wants the
+  ;; rest of the ledger's verbs.
   #:export (sql-runner
             sql-session?
             sql-session-engine
@@ -56,8 +60,21 @@
             sql-session-columns
             sql-session-options
             sql-open-session
-            sql-history-columns
+            sql-close!
             sql-table-exists?
+            sql-history-columns
+            sql-history
+            sql-entry-for
+            sql-ensure-history!
+            sql-record!
+            sql-forget!
+            sql-statements
+            sql-apply!
+            sql-begin!
+            sql-commit!
+            sql-rollback!
+            sql-clean!
+            sql-droppable-objects
             sql-entry->insert
             sql-entry->update
             sql-init-statements))
@@ -86,8 +103,51 @@
   (let ((log (assq-ref (sql-session-options session) 'log)))
     (when log (log level message))))
 
+(define (session-option session key default)
+  "SESSION's option KEY, or DEFAULT when the caller did not set it."
+  (let ((pair (assq key (sql-session-options session))))
+    (if pair (cdr pair) default)))
+
 (define (session-placeholders session)
   (or (assq-ref (sql-session-options session) 'placeholders) '()))
+
+(define (session-dry-run? session)
+  "Whether the caller asked for a run that changes nothing."
+  (and (session-option session 'dry-run? #f) #t))
+
+(define (session-verbose? session)
+  "Whether the caller asked for each statement, in full."
+  (and (session-option session 'verbose? #f) #t))
+
+;;; ---------------------------------------------------------------------------
+;;; Verifying what the server did
+;;; ---------------------------------------------------------------------------
+
+(define (sql-verify! session context)
+  "Ask SESSION's engine whether its last statement was accepted, where it can.
+
+Only PostgreSQL (and everything reached through its driver) has to be asked: see
+`dialect-verification-query'.  The question is worth asking only inside a
+transaction, because outside one a refused statement leaves nothing behind to
+find -- which is why the callers that work outside a transaction check for the
+effect instead, as creating the ledger does."
+  (let* ((engine (sql-session-engine session))
+         (query (dialect-verification-query engine)))
+    (when query
+      ;; No `#:engine' here on purpose: what this asks about is the *rows*, and a
+      ;; status that reads as a failure is how the server says `it was refused'
+      ;; -- which the count below says better, in the caller's own words.
+      (let ((rows (fetch-sql-rows (sql-session-db session) query
+                                  #:context (format #f "verifying ~a" context))))
+        (unless (= 1 (length rows))
+          (raise-migration-error
+           (format #f "~a: the server refused this statement.~%   guile-dbi's PostgreSQL driver reports only that a statement was sent, so the~%   server's own message is not carried back: run the statement by hand, or~%   read the server's log, for it.  Every statement after a refused one is~%   refused too, so the transaction is aborted and nothing this run did will~%   be kept."
+                   context)))))))
+
+(define (sql-run-verified! session sql context)
+  "Run SQL in SESSION, and ask whether the server accepted it where that is knowable."
+  (execute-sql! (sql-session-db session) sql #:context context)
+  (sql-verify! session context))
 
 ;;; ---------------------------------------------------------------------------
 ;;; The ledger
@@ -99,6 +159,7 @@
          (query (dialect-history-table-exists-query engine
                                                     (sql-session-table session))))
     (pair? (fetch-sql-rows (sql-session-db session) query
+                           #:engine engine
                            #:context "asking the catalogue for the ledger"))))
 
 (define (sql-history-columns session)
@@ -112,6 +173,7 @@
                     (and name
                          (sql-column->symbol (format #f "~a" name)))))
                 (fetch-sql-rows (sql-session-db session) query
+                                #:engine engine
                                 #:context "reading the ledger's columns"))))
 
 (define (sql-init-statements engine table options)
@@ -144,23 +206,56 @@ definition, which is built around their name."
                               #:context "creating the ledger"))
               (sql-init-statements (sql-session-engine session)
                                    (sql-session-table session)
-                                   (sql-session-options session))))
+                                   (sql-session-options session)))
+    ;; The ledger is created outside a transaction, where a refused statement on
+    ;; PostgreSQL cannot be asked about, so the proof has to be the ledger
+    ;; itself: there, or not.  A run that carried on without one would report
+    ;; every migration as applied and never read a single row of it back.
+    (unless (sql-table-exists? session)
+      (raise-migration-error
+       (format #f "the ledger ~a is not there after creating it.~%   (guile-dbi's PostgreSQL driver does not carry the server's message back:~%   check the server's log, or run the CREATE TABLE by hand.)"
+               (sql-session-table session)))))
   session)
 
+(define (sql-select-columns session)
+  "The ledger's columns, named for a SELECT the engine's driver can read back.
+
+Named rather than asked for with `*': guile-dbi's PostgreSQL driver unpacks a
+row from the result's own metadata, and `SELECT *' arrives there with none.  The
+answer is no rows at all -- indistinguishable from an empty ledger -- which made
+every PostgreSQL deployment re-run every migration on every run.  Naming them is
+also what keeps a ledger made by an older mutastructura, with fewer columns,
+readable, and what lets the one column the same driver cannot unpack be read as
+text (`dialect-readable-column')."
+  (let ((engine (sql-session-engine session)))
+    (string-join (map (lambda (column)
+                        (dialect-readable-column
+                         engine (symbol->sql-column column)))
+                      (or (sql-session-columns session)
+                          (dialect-history-columns engine)))
+                 ", ")))
+
 (define (sql-history session)
-  "Every row of the ledger, oldest first."
-  (let ((rows (fetch-sql-rows (sql-session-db session)
-                              (format #f "SELECT * FROM ~a ORDER BY id"
-                                      (sql-session-quoted-table session))
-                              #:context "reading the ledger")))
-    (map (lambda (row)
-           (map (lambda (pair)
-                  (cons (if (symbol? (car pair))
-                            (sql-column->symbol (symbol->string (car pair)))
-                            (car pair))
-                        (cdr pair)))
-                row))
-         rows)))
+  "Every row of the ledger, oldest first; empty when there is no ledger yet.
+
+A database that has never been migrated has no ledger, and the honest answer to
+`which migrations are applied here?' is then `none', not a failure."
+  (if (not (sql-table-exists? session))
+      '()
+      (let ((rows (fetch-sql-rows (sql-session-db session)
+                                  (format #f "SELECT ~a FROM ~a ORDER BY id"
+                                          (sql-select-columns session)
+                                          (sql-session-quoted-table session))
+                                  #:engine (sql-session-engine session)
+                                  #:context "reading the ledger")))
+        (map (lambda (row)
+               (map (lambda (pair)
+                      (cons (if (symbol? (car pair))
+                                (sql-column->symbol (symbol->string (car pair)))
+                                (car pair))
+                            (cdr pair)))
+                    row))
+             rows))))
 
 (define (entry-value entry field)
   "FIELD's value in ENTRY, or #f."
@@ -256,14 +351,18 @@ definitely in that engine's format."
 
 (define (sql-entry-for session name)
   "The ledger row for NAME, or #f."
-  (find (lambda (row)
-          (equal? (format #f "~a" (or (assq-ref row 'name) "")) name))
-        (fetch-sql-rows (sql-session-db session)
-                        (format #f "SELECT * FROM ~a WHERE name = ~a"
-                                (sql-session-quoted-table session)
-                                (dialect-quote-string (sql-session-engine session)
-                                                      name))
-                        #:context "looking up a migration in the ledger")))
+  (and (sql-table-exists? session)
+       (find (lambda (row)
+               (equal? (format #f "~a" (or (assq-ref row 'name) "")) name))
+             (fetch-sql-rows (sql-session-db session)
+                             (format #f "SELECT ~a FROM ~a WHERE name = ~a"
+                                     (sql-select-columns session)
+                                     (sql-session-quoted-table session)
+                                     (dialect-quote-string
+                                      (sql-session-engine session)
+                                      name))
+                             #:engine (sql-session-engine session)
+                             #:context "looking up a migration in the ledger"))))
 
 (define (sql-record! session entry)
   "Write ENTRY to the ledger, replacing the row for the same migration.
@@ -271,23 +370,22 @@ definitely in that engine's format."
 One row per migration, updated in place: that is what makes a repeatable
 migration's re-run visible as a re-run rather than as a second migration, and it
 is what the ledger's unique key on `name' enforces."
-  (let ((name (format #f "~a" (entry-value entry 'name))))
-    (if (sql-entry-for session name)
-        (execute-sql! (sql-session-db session)
-                      (sql-entry->update session entry)
-                      #:context (format #f "recording ~a" name))
-        (execute-sql! (sql-session-db session)
-                      (sql-entry->insert session entry)
-                      #:context (format #f "recording ~a" name)))))
+  (let* ((name (format #f "~a" (entry-value entry 'name)))
+         (context (format #f "recording ~a" name)))
+    (sql-run-verified! session
+                       (if (sql-entry-for session name)
+                           (sql-entry->update session entry)
+                           (sql-entry->insert session entry))
+                       context)))
 
 (define (sql-forget! session name)
   "Remove NAME's row from the ledger."
-  (execute-sql! (sql-session-db session)
-                (format #f "DELETE FROM ~a WHERE name = ~a"
-                        (sql-session-quoted-table session)
-                        (dialect-quote-string (sql-session-engine session)
-                                              name))
-                #:context (format #f "forgetting ~a" name)))
+  (sql-run-verified! session
+                     (format #f "DELETE FROM ~a WHERE name = ~a"
+                             (sql-session-quoted-table session)
+                             (dialect-quote-string (sql-session-engine session)
+                                                   name))
+                     (format #f "forgetting ~a" name)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Running a migration
@@ -325,45 +423,90 @@ compare against."
                  (sql (assq-ref statement 'sql))
                  (line (assq-ref statement 'line))
                  (context (format #f "~a, line ~a" name (or line 0))))
-            (if verbose?
-                (session-log session 'debug sql)
-                (session-log session 'debug
-                             (format #f "  [~a/~a] ~a" (+ n 1) total
-                                     (first-line sql))))
-            (execute-sql! db sql #:context context)
+            ;; One line per statement, so a default run says what it did; the
+            ;; whole statement, multi-line bodies included, is what --verbose
+            ;; adds.
+            (session-log session 'info
+                         (format #f "  [~a/~a] ~a" (+ n 1) total
+                                 (first-line sql)))
+            (when verbose? (session-log session 'debug sql))
+            (sql-run-verified! session sql context)
             (loop (cdr rest) (+ n 1))))))
     total))
-
-(define (first-line text)
-  "TEXT's first line, trimmed, for a one-line log entry."
-  (let* ((trimmed (trim-whitespace text))
-         (end (string-index trimmed #\newline)))
-    (let ((line (if end (substring trimmed 0 end) trimmed)))
-      (if (> (string-length line) 90)
-          (string-append (substring line 0 87) "...")
-          line))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Transactions, locking and clean
 ;;; ---------------------------------------------------------------------------
 
 (define (sql-begin! session)
-  "Take the migration lock, and open a transaction when the engine can honour it."
+  "Open a transaction where the engine can honour one, and take the migration lock.
+
+The transaction is opened first on purpose.  On PostgreSQL a refused statement
+is only visible from inside a transaction (see `dialect-verification-query'),
+and the lock is taken there so that a lock statement the server refused aborts
+the transaction instead of passing for a lock that was taken."
   (let ((engine (sql-session-engine session))
         (db (sql-session-db session)))
-    (for-each (lambda (statement)
-                (execute-sql! db statement #:context "taking the migration lock"))
-              (dialect-lock-statements engine (sql-session-table session)))
     (when (dialect-transactional-ddl? engine)
       (execute-sql! db (dialect-begin-statement engine)
-                    #:context "begin transaction"))
+                    #:context "begin transaction")
+      (sql-verify! session "opening the transaction"))
+    (sql-take-lock! session)
     (set-sql-session-locked?! session #t)))
+
+(define (sql-take-lock! session)
+  "Take the migration lock, or say why it could not be taken.
+
+SQLite and CockroachDB have no lock statement -- on SQLite the transaction is
+the lock -- and are done before anything is asked.  MySQL's `GET_LOCK' answers 1
+when the lock is held, 0 when it waited ten seconds and gave up, and NULL when
+it failed: a driver that reports only whether the statement was *sent* would
+read all three as success, which is a lock that is not held at all.  PostgreSQL's
+`pg_advisory_lock' blocks until it can grant the lock, so being accepted is the
+whole of what there is to know about it -- and it is taken inside the
+transaction, where being refused is visible."
+  (let* ((engine (sql-session-engine session))
+         (db (sql-session-db session))
+         (statements (dialect-lock-statements engine (sql-session-table session))))
+    (cond
+      ((null? statements) #t)
+      ((mysql-engine? engine)
+       (let ((rows (fetch-sql-rows db (car statements)
+                                   #:engine engine
+                                   #:context "taking the migration lock")))
+         (unless (lock-granted? rows)
+           (raise-migration-error
+            (format #f "could not take the migration lock ~a: another run is holding it (MySQL waits ten seconds and then answers 0)"
+                    (dialect-lock-name (sql-session-table session)))))))
+      (else
+       (for-each (lambda (statement)
+                   (execute-sql! db statement
+                                 #:context "taking the migration lock"))
+                 statements)
+       (sql-verify! session "taking the migration lock")))))
+
+(define (lock-granted? rows)
+  "Whether MySQL answered `GET_LOCK' with the row that means it granted the lock.
+
+ROWS is what `fetch-sql-rows' answers with -- rows, each an alist of column to
+value -- so the answer is the first column of the first row, and not the rest of
+that row's alist.  It is a 1 whatever the driver unpacked the column as:
+guile-dbd-mysql hands back a number for a `LONGLONG' column and, with a type
+mapping of its own, a string of one, and both mean the same thing."
+  (let ((value (and (pair? rows)
+                    (pair? (car rows))
+                    (cdr (car (car rows))))))
+    (or (equal? value 1) (equal? value "1"))))
 
 (define (sql-commit! session)
   "Commit when there is a transaction to commit, then release the lock."
   (let ((engine (sql-session-engine session))
         (db (sql-session-db session)))
     (when (dialect-transactional-ddl? engine)
+      ;; Everything the run did -- the migrations and the ledger rows -- is in
+      ;; this transaction, so one question answers for all of it before the
+      ;; commit that makes it permanent.
+      (sql-verify! session "committing the run")
       (execute-sql! db (dialect-commit-statement engine)
                     #:context "commit transaction"))
     (release-lock! session)))
@@ -397,25 +540,53 @@ every later run, turning one bad migration into a stuck pipeline."
                 (dialect-unlock-statements engine (sql-session-table session)))
       (set-sql-session-locked?! session #f))))
 
+(define (sql-droppable-objects session)
+  "What the catalogue reports as droppable, as `(type . name)' pairs."
+  (filter-map (lambda (row)
+                (let ((type (or (assq-ref row 'object-type)
+                                (assq-ref row 'table-type)))
+                      (name (or (assq-ref row 'object-name)
+                                (assq-ref row 'name))))
+                  (and type name
+                       (cons (format #f "~a" type) (format #f "~a" name)))))
+              (fetch-sql-rows (sql-session-db session)
+                              (dialect-clean-catalog-query
+                               (sql-session-engine session))
+                              #:engine (sql-session-engine session)
+                              #:context "listing the objects to drop")))
+
 (define (sql-clean! session)
-  "Drop every object the catalogue reports, the ledger included."
+  "Drop every object the catalogue reports, the ledger included.
+
+`--dry-run' turns this into a report: every statement is named and nothing is
+run.  Because the PostgreSQL driver cannot report a refused statement, what was
+dropped is followed by the one question that can be asked about it -- is
+anything left? -- rather than a promise that the database is now empty."
   (let* ((engine (sql-session-engine session))
          (db (sql-session-db session))
-         (objects (fetch-sql-rows db (dialect-clean-catalog-query engine)
-                                  #:context "listing the objects to drop"))
-         (statements (filter-map (lambda (row)
-                                   (let ((type (or (assq-ref row 'object-type)
-                                                   (assq-ref row 'table-type)))
-                                         (name (or (assq-ref row 'object-name)
-                                                   (assq-ref row 'name))))
-                                     (and name
-                                          (dialect-drop-statement
-                                           engine type
-                                           (format #f "~a" name)))))
+         (objects (sql-droppable-objects session))
+         (statements (filter-map (lambda (object)
+                                   (dialect-drop-statement engine
+                                                           (car object)
+                                                           (cdr object)))
                                  objects)))
     (for-each (lambda (statement)
-                (execute-sql! db statement #:context "dropping an object"))
+                (session-log session 'info (format #f "  ~a" statement))
+                (unless (session-dry-run? session)
+                  (execute-sql! db statement #:context "dropping an object")))
               statements)
+    (unless (session-dry-run? session)
+      (let ((left (sql-droppable-objects session)))
+        (unless (null? left)
+          (session-log session 'warn
+                       (format #f "~a object~a could not be dropped and ~a still there"
+                               (length left)
+                               (if (= 1 (length left)) "" "s")
+                               (if (= 1 (length left)) "is" "are")))
+          (for-each (lambda (object)
+                      (session-log session 'warn
+                                   (format #f "  ~a ~a" (car object) (cdr object))))
+                    left))))
     (length statements)))
 
 ;;; ---------------------------------------------------------------------------
@@ -423,15 +594,23 @@ every later run, turning one bad migration into a stuck pipeline."
 ;;; ---------------------------------------------------------------------------
 
 (define* (sql-open-session spec #:key (options '()))
-  "Open a SQL session for SPEC and make sure the ledger is usable."
+  "Open a SQL session for SPEC, with the ledger created unless asked not to.
+
+`(ensure-history? . #f)' is what `status', `clean' and `--dry-run' pass: they
+must be able to look at a database without writing to it, and a ledger made for
+a report is a ledger made for nothing.  The columns are discovered only when
+there is a ledger to discover them in."
   (let* ((engine (connection-spec-engine spec))
          (options* (append options (list (cons 'engine engine))))
          (table (or (assq-ref options 'history-table)
                     (engine-default-history-name engine)))
          (db (open-database engine (connection-spec-connection spec))))
     (let ((session (make-sql-session engine spec db table '() options* #f)))
-      (sql-ensure-history! session)
-      (make-sql-session engine spec db table (sql-history-columns session)
+      (when (session-option session 'ensure-history? #t)
+        (sql-ensure-history! session))
+      (make-sql-session engine spec db table
+                        (and (sql-table-exists? session)
+                             (sql-history-columns session))
                         options* #f))))
 
 (define (sql-close! session)

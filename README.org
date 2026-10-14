@@ -31,9 +31,10 @@ Mutastructura provides a declarative, transactional approach to managing your da
 - Written purely in Guile Scheme, bringing functional programming and S-expression elegance to your database migrations.
 - Native ~dbi~ support: ~sqlite3~, ~postgresql~, ~mysql~. Document databases are spoken to over the wire protocol instead, with a BSON codec and a SCRAM-SHA-256 handshake of its own.
 - One engine registry decides everything: ~--database mariadb~ is MySQL, ~--database crdb~ is CockroachDB through the PostgreSQL driver, and a family already implemented costs one line to add.
-- Auto-installs the schema management ~migrations_history~.
-- Every migration is executed within a ~with-transaction~ block and so, transactionally (from ~BEGIN~ to ~COMMIT~ you could say).
-- If a migration fails, the legion retreats (~ROLLBACK~), ensuring your database is never left in a corrupted, half-migrated state.
+- Auto-installs the schema management ~migrations_history~ (and does not, for a command that only reads).
+- ~status~ reports the whole plan -- what is pending, what is applied, what changed -- without running anything, and ~clean~ drops what the database has.
+- Every migration is executed within a ~with-transaction~ block and so, transactionally (from ~BEGIN~ to ~COMMIT~ you could say), wherever the engine can undo DDL at all.
+- If a migration fails, the legion retreats (~ROLLBACK~), ensuring your database is never left in a corrupted, half-migrated state -- and on MySQL, which commits DDL as it runs, mutastructura says plainly that what ran stands and records no success for it.
 - Intelligent Parsing with a finite-state-machine-based SQL lexer (~string-split-to-queries~).
 - Computes ~SHA256~ checksums of your migration files and tracks them in a ~migrations_history~ table, ensuring your schema evolution is strictly linear and tamper-evident.
 
@@ -118,6 +119,41 @@ See a quick help page:
 mutastructura --help
 #+end_src
 
+** Commands
+
+Three commands, and the first word on the command line says which. No word at all means ~migrate~, which is what this program did when migrating was all it did.
+
+#+begin_src shell
+mutastructura migrate -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
+mutastructura status  -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
+mutastructura clean   -c ./lucidplan-test.sqlite -d sqlite3
+#+end_src
+
+- *migrate* (the default) :: applies what is pending, in order, recording each one in the ledger. The whole run is one transaction where the engine can undo DDL; where it cannot (MySQL commits DDL as it runs) the message says so rather than pretending.
+- *status* :: the same plan, reported and not run. Every migration's state, what the plan adds up to, and the problems it found -- a file changed after it was applied, a ledger entry whose file has gone. It opens a session that writes nothing at all, so it is safe to point at a database in production; the ledger is not even created if it is missing.
+- *clean* :: drops everything the catalogue reports in the current schema, the ledger included. With ~--dry-run~ it names what it would drop and drops nothing.
+- *help* :: prints the bundled ~resources/help.txt~, as ~--help~ / ~-h~ does.
+
+** The flags that reach further into a run
+
+- ~--placeholder key=value~ :: substitutes ~${key}~ in every migration read during this run. Repeat the option (~--placeholder a=1 --placeholder b=2~) or put the pairs in one comma-separated value (~--placeholder a=1,b=2~). A ~${...}~ nobody defined is left exactly as it was, so a migration may carry template syntax of its own inside a comment. This is how a schema name, a tablespace or a role differs between deployments without forking the migrations.
+- ~--dry-run~ :: reads the plan and every statement of every migration that would run, and changes nothing: no statement is sent, no ledger row is written, and the ledger is not created if it is missing. With ~clean~ it reports the drops instead of performing them.
+- ~-v~ / ~--verbose~ :: shows each statement in full -- multi-line bodies, delimiters, JSON command documents -- instead of its first line.
+
+#+begin_src shell
+# a report about a database in production: nothing is written to it
+mutastructura status -m ./migrations \
+  -c postgresql://alice@db.example.net:5432/appdb -d postgresql
+
+# what would run, statement by statement, with the schema name substituted
+mutastructura migrate -m ./migrations -c ./local.db -d sqlite3 \
+  --placeholder schema=app_ --dry-run --verbose
+
+# exactly what clean would drop, and then the dropping itself
+mutastructura clean -c mysql://alice:secret@127.0.0.1:3306/appdb -d mysql --dry-run
+mutastructura clean -c mysql://alice:secret@127.0.0.1:3306/appdb -d mysql
+#+end_src
+
 Run easily and reproducibly with Maak + Guix, or use directly Guile, or load a REPL (like Arei)
 
 #+BEGIN_SRC sh
@@ -133,8 +169,13 @@ guix time-machine --channels=channels.scm -- \
 ** Argument Details
 - ~-d~ / ~--database~ :: The engine you are targeting: ~sqlite3~, ~postgresql~, ~cockroachdb~, ~mysql~ (or ~mariadb~) and ~mongodb~, plus the aliases each one accepts (~pg~, ~psql~, ~crdb~, ~percona~, ~mongo~, ~timescaledb~, ~yugabyte~...).
 - ~-c~ / ~--connection~ :: A URL, or the driver's own connection string. A URL is ~sqlite3:///var/lib/app.db~, ~postgresql://user:pass@host:5432/appdb~, ~mysql://user:pass@host:3306/appdb~ or ~mongodb://user:pass@host:27017/appdb?authSource=admin~; anything else is passed through as the engine's connection string.
-- ~-m~ / ~--migrations~ :: The path to your migrations directory: ~*.sql~ files for the SQL engines, ~*.json~ command documents for MongoDB.
+- ~-m~ / ~--migrations~ :: The path to your migrations directory: ~*.sql~ files for the SQL engines, ~*.json~ command documents for MongoDB. Read by ~migrate~ and ~status~; ~clean~ never looks at it.
+- ~--placeholder~ :: ~key=value~, repeatable (or comma-separated), substituting ~${key}~ in every migration read during this run.
+- ~--dry-run~ :: report what would run (or, for ~clean~, what would be dropped) and change nothing.
+- ~-v~ / ~--verbose~ :: each statement in full, instead of its first line.
 - ~-r~ / ~--resources~ :: (optional) Path to internal application resources (used for development and installation, bundled from ./resources dir).
+
+Every command exits ~0~ when it did what it was asked to do and ~1~ when it could not -- a migration that failed, a connection that was refused, an option that was missing, a URL that named an engine other than ~--database~. The failure is reported as one line beginning ~[error]~.
 
 ----------------
 
@@ -147,8 +188,10 @@ When invoked, Mutastructura:
 - Scans your provided migrations directory, and gets migrations to run, in *chronological + alphabetical order* based on filename (anything works, but the best naming for this purpose is in the shape of ~YYYY-MM-DD_HH:MM:SS_some-name.sql~, e.g. ~2026-04-01_21:54:00_init.sql~)
 - Generates SHA256 hashes for each file. Changing the file contents means changing the SHA and will trigger a WARNING
 - Safely splits the SQL files into individual statements.
-- Executes the statements synchronously.
+- Executes the statements synchronously (or, for ~status~, reports them and runs nothing at all).
 - Commits the transaction and gracefully closes the connection.
+
+Which of those three things happens is the command's business: ~migrate~ runs the plan, ~status~ reports it, ~clean~ drops what the database has. All three are the same plan read in different ways, which is why the whole command set is one planner and one runner.
 
 Mutastructura follows a classic functional-core, imperative-shell architecture, divided into distinct modules that handle specific responsibilities.
 
@@ -156,6 +199,16 @@ Migrations whose name ends in ~*.repeatable.sql~ will be deemed as repeatable an
 
 *** The Imperative Shell (CLI & Orchestration)
 Located in ~(mutastructura main)~, this is the commander of the program. It deals with all the "side-effects": reading command-line arguments, opening the database connection, reading from the file system, and printing outputs to the terminal.
+
+*** What each engine can promise (FIDES PER ENGINE)
+
+The plan is the same everywhere; what a database can *guarantee* while it runs is not, and mutastructura says which is which rather than pretending they are alike.
+
+- *SQLite and PostgreSQL* have transactional DDL: the run is one transaction, a migration that fails leaves the database as it was, and nothing is recorded as having happened.
+- *MySQL and MariaDB* commit DDL implicitly -- a property of the server, not something a client can work around -- so what ran before a failure stands. The failure is reported, the ledger records no success, and the migration is attempted again on the next run.
+- *The migration lock* is the transaction itself on SQLite (~BEGIN IMMEDIATE~), and an advisory lock on PostgreSQL and MySQL. MySQL's ~GET_LOCK~ answers 1 when it granted the lock and 0 after waiting ten seconds and giving up, and mutastructura reads that answer instead of assuming the statement worked: a run that could not take the lock fails and says so, rather than interleaving with the run that holds it.
+- *guile-dbi's PostgreSQL driver cannot report a refused statement*: it sends the query and reports only that the send worked, so a migration with a syntax error in it looks exactly like one that ran. mutastructura asks the server a question it cannot answer wrongly -- inside a transaction, PostgreSQL refuses every statement after a failed one -- and so names the migration and the line that failed. The same care is taken with the rows of a query: the status is read after them, because that driver abandons a row whose column type it does not know, and the ledger's timestamps are read as text for exactly that reason.
+- *CockroachDB* has no advisory locks at all, so there the transaction plus the ledger's unique key on the migration's name is what keeps two runs apart.
 
 *** The Migration Dance
 

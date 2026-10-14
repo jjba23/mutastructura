@@ -121,15 +121,22 @@ pair `(failed . MESSAGE)' with what the database said."
   (irritants migration-exception-irritants))
 
 (define (error-message-of ex)
-  "The message inside EX, whether it is ours or a Guile condition."
+  "The message inside EX, whether it is ours or a Guile condition.
+
+`exception-message' rather than `condition-message': the latter is SRFI-35's and
+is not what `(ice-9 exceptions)' binds, so calling it here was an unbound
+variable waiting for the first exception that was not one of ours -- which is
+exactly the exception the command line most needs to print."
   (cond
     ((migration-exception? ex)
      (migration-exception-message ex))
     ((exception-with-message? ex)
-     (condition-message ex))
-    ((condition? ex)
-     (condition-message (make-message-condition (format #f "~a" ex))))
-    (else (format #f "~a" ex))))
+     (exception-message ex))
+    (else
+     (format #f "~a" (or (catch #t
+                                 (lambda () (exception-message ex))
+                                 (lambda _ #f))
+                          ex)))))
 
 (define (raise-migration-error message . irritants)
   "Raise a migration error carrying MESSAGE."
@@ -169,6 +176,19 @@ message names the host and the reason."
   "Whether DB's driver is willing to report on the connection at all."
   (eq? (statement-status (dbi-get_status db)) 'ok))
 
+;; Closed connections are kept here, rather than left to be collected.
+;;
+;; guile-dbi frees a database handle from the smob's own free function, and that
+;; path calls the same C routine `dbi-close' does -- which asserts that its
+;; argument is a smob, on a smob the collector has already moved on from.  The
+;; result is an exception raised inside the garbage collector: harmless in a
+;; program that exits after migrating, and fatal in one that does not, which is
+;; how a test suite that opens a connection per case ends.  A finalizer cannot be
+;; unregistered from Scheme, so the handle is held instead.  It costs one small
+;; smob per closed connection, and it is the only thing that keeps a collected
+;; connection from being the thing that ends the program.
+(define closed-handles '())
+
 (define (close-database db)
   "Close DB, doing nothing if it is already closed.
 
@@ -177,7 +197,8 @@ a driver that answers `invalid module handle' to the second call must not turn a
 successful migration into a failed run."
   (catch #t
          (lambda () (dbi-close db))
-         (lambda _ #f)))
+         (lambda _ #f))
+  (set! closed-handles (cons db closed-handles)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Statements
@@ -206,18 +227,33 @@ successful migration into a failed run."
         (format #f "~a~a" (or-empty (and context (format #f "~a: " context)))
                 (driver-message reading)))))))
 
-(define* (fetch-sql-rows db sql #:key (context #f))
+(define* (fetch-sql-rows db sql #:key (context #f) (engine #f))
   "Run SQL on DB, returning every row as an alist.
 
 A query that fails raises here rather than returning no rows: an empty answer
 and a refusal are very different things, and the planner's decisions -- is the
-ledger there? is the table there? -- depend on the difference."
+ledger there? is the table there? -- depend on the difference.
+
+ENGINE, when given, is what decides whether the status is read a second time,
+after the rows.  A driver that can abandon a row it cannot unpack -- PostgreSQL's
+does, for a column type it does not know -- ends the reading loop without a
+word, and the answer looks like a table with nothing in it.  The check is asked
+only of those engines (`dialect-may-abandon-rows?'): SQLite's driver ends a
+finished read with a status of its own, and a check that took that for a failure
+would break it."
   (execute-sql! db sql #:context context)
-  (let loop ((acc '()))
-    (let ((row (dbi-get_row db)))
-      (if (pair? row)
-          (loop (cons (sql-row->scheme-alist row) acc))
-          (reverse acc)))))
+  (let ((rows (let loop ((acc '()))
+                (let ((row (dbi-get_row db)))
+                  (if (pair? row)
+                      (loop (cons (sql-row->scheme-alist row) acc))
+                      (reverse acc))))))
+    (when (and engine (dialect-may-abandon-rows? engine))
+      (let ((reading (statement-status (dbi-get_status db))))
+        (when (statement-failed? reading)
+          (raise-migration-error
+           (format #f "~a~a" (or-empty (and context (format #f "~a: " context)))
+                   (driver-message reading))))))
+    rows))
 
 (define (run-stmt db)
   "Return a procedure that runs one statement on DB."

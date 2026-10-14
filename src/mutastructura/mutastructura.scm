@@ -129,6 +129,7 @@
             placeholder-syntax?
             ;; --- hashing and helpers ---
             whitespace-only?
+            first-line
             flatten
             flatten-1
             nil?
@@ -920,6 +921,26 @@ sounds: a trailing newline left on a line is the difference between recognising
   (if (string? s)
       (string-trim-right (string-trim s))
       s))
+
+(define (first-line text)
+  "TEXT's first line worth reading, for a one-line report of something long.
+
+The long thing here is a statement: a migration's `CREATE FUNCTION' is forty
+lines, and the line that says what it does is somewhere near the top.  Blank
+lines and `--' comments are skipped on the way there, because a statement that
+opens with a comment would otherwise be reported as its comment; anything past
+90 characters is elided, because a log line that wraps is read by nobody."
+  (let loop ((lines (string-split (or (and (string? text) text) "") #\newline)))
+    (if (null? lines)
+        ""
+        (let ((line (trim-whitespace (car lines))))
+          (if (or (string=? line "")
+                  (string-prefix? "--" line)
+                  (string-prefix? "//" line))
+              (loop (cdr lines))
+              (if (> (string-length line) 90)
+                  (string-append (substring line 0 87) "...")
+                  line))))))
 
 (define (nil? x)
   "Whether X is null or the empty list."

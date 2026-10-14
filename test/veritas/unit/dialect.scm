@@ -322,6 +322,42 @@
 ;;; Clean
 ;;; ---------------------------------------------------------------------------
 
+(define reading-suite
+  (suite "reading a ledger column"
+         #:concurrent? #f
+         (test "the timestamp column is read as text, where the driver needs it"
+               #:shuffle? #f
+               ;; Not a preference: guile-dbi's PostgreSQL driver abandons a row
+               ;; whose column type it does not know, and guile-dbd-mysql answers
+               ;; a DATETIME with seconds since the epoch.  Read as text, both
+               ;; say when the migration was applied.
+               (assert-equal #:expect "\"installed_on\"::text AS \"installed_on\""
+                             #:got (dialect-readable-column postgres "installed_on")
+                             #:name "PostgreSQL, whose driver cannot unpack a TIMESTAMPTZ")
+               (assert-equal #:expect "DATE_FORMAT(`installed_on`, '%Y-%m-%d %H:%i:%s') AS `installed_on`"
+                             #:got (dialect-readable-column mysql "installed_on")
+                             #:name "MySQL, whose driver answers with a number instead")
+               (assert-equal #:expect "DATE_FORMAT(`installed_on`, '%Y-%m-%d %H:%i:%s') AS `installed_on`"
+                             #:got (dialect-readable-column mariadb "installed_on")
+                             #:name "and MariaDB through the same alias")
+               (assert-equal #:expect "\"installed_on\""
+                             #:got (dialect-readable-column sqlite "installed_on")
+                             #:name "SQLite, which keeps its timestamps as text already")
+               (assert-equal #:expect "\"installed_on\"::text AS \"installed_on\""
+                             #:got (dialect-readable-column cockroach "installed_on")
+                             #:name "and CockroachDB, which is reached as PostgreSQL")
+               (assert-equal #:expect "\"applied_at\"::text AS \"applied_at\""
+                             #:got (dialect-readable-column postgres "applied_at")
+                             #:name "including the name the first ledger called it"))
+         (test "every other column is read as it is named"
+               #:shuffle? #f
+               (assert-equal #:expect "\"name\""
+                             #:got (dialect-readable-column postgres "name")
+                             #:name "a ledger column comes back quoted")
+               (assert-equal #:expect "`success`"
+                             #:got (dialect-readable-column mysql "success")
+                             #:name "with the engine's own quoting"))))
+
 (define clean-suite
   (suite "dropping what clean found"
          #:concurrent? #f
@@ -394,4 +430,5 @@
                quoting-suite
                locking-suite
                ledger-suite
+               reading-suite
                clean-suite))

@@ -136,6 +136,15 @@
   (let ((log (assq-ref (mongo-session-options session) 'log)))
     (when log (log level message))))
 
+(define (session-option session key default)
+  "SESSION's option KEY, or DEFAULT when the caller did not set it."
+  (let ((pair (assq key (mongo-session-options session))))
+    (if pair (cdr pair) default)))
+
+(define (session-dry-run? session)
+  "Whether the caller asked for a run that changes nothing."
+  (and (session-option session 'dry-run? #f) #t))
+
 (define (session-placeholders session)
   (or (assq-ref (mongo-session-options session) 'placeholders) '()))
 
@@ -301,13 +310,15 @@ error messages name."
                                        (if (= total 1) "" "s")))
     (unless dry-run?
       (for-each (lambda (statement)
-                  (if verbose?
-                      (session-log session 'debug (assq-ref statement 'json))
-                      (session-log session 'debug
-                                   (format #f "  [~a/~a] ~a"
-                                           (assq-ref statement 'position) total
-                                           (or (assq-ref statement 'command)
-                                               "command"))))
+                  ;; One line per command, so a default run says what it did; the
+                  ;; command document itself is what --verbose adds.
+                  (session-log session 'info
+                               (format #f "  [~a/~a] ~a"
+                                       (assq-ref statement 'position) total
+                                       (or (assq-ref statement 'command)
+                                           "command")))
+                  (when verbose?
+                    (session-log session 'debug (assq-ref statement 'json)))
                   (wire:mongo-command
                    (mongo-session-client session)
                    (assq-ref statement 'document)))
@@ -331,12 +342,16 @@ finish."
 (define (mongo-rollback! session) session)
 
 (define (mongo-clean! session)
-  "Drop every collection in the database, the ledger included."
-  (let ((names (mongo-collections session)))
+  "Drop every collection in the database, the ledger included.
+
+`--dry-run' names what would be dropped and drops nothing."
+  (let ((names (mongo-collections session))
+        (dry-run? (session-dry-run? session)))
     (for-each (lambda (name)
-                (session-log session 'debug (format #f "dropping ~a" name))
-                (wire:mongo-command (mongo-session-client session)
-                               (list (cons "drop" name))))
+                (session-log session 'info (format #f "  drop collection ~a" name))
+                (unless dry-run?
+                  (wire:mongo-command (mongo-session-client session)
+                                      (list (cons "drop" name)))))
               names)
     (length names)))
 
@@ -345,7 +360,11 @@ finish."
 ;;; ---------------------------------------------------------------------------
 
 (define* (mongo-open-session spec #:key (options '()))
-  "Open a MongoDB session for SPEC and make sure the ledger is usable."
+  "Open a MongoDB session for SPEC, with the ledger created unless asked not to.
+
+`(ensure-history? . #f)' is what `status', `clean' and `--dry-run' pass: a
+database nobody has migrated has no ledger, and reporting on it must not create
+one."
   (let* ((engine (connection-spec-engine spec))
          (options* (append options (list (cons 'engine engine))))
          (collection (or (assq-ref options 'history-table)
@@ -354,7 +373,9 @@ finish."
     (let ((session (make-mongo-session engine spec client
                                        (or (connection-spec-database spec) "admin")
                                        collection options*)))
-      (mongo-ensure-history! session))))
+      (when (session-option session 'ensure-history? #t)
+        (mongo-ensure-history! session))
+      session)))
 
 (define (mongo-close! session)
   "Close SESSION's connection."

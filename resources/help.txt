@@ -4,7 +4,25 @@ MUTASTRUCTURA - Relational Schema Migrations Powered by Lisp
     See more at: https://codeberg.org/jjba23/mutastructura
     Software licensed under the GNU AGPL v3 or newer.
     
-USAGE: mutastructura [OPTIONS]
+USAGE: mutastructura [COMMAND] [OPTIONS]
+
+COMMANDS:
+    migrate
+        (default) Apply the migrations that are pending, in order, and record
+        each one in the ledger. A migration that fails rolls back the whole run
+        where the engine can undo DDL; where it cannot (MySQL commits DDL as it
+        runs) the message says so.
+    status
+        Report the plan and run nothing: every migration's state, what the plan
+        adds up to, and the problems it found (a file changed after it was
+        applied, a ledger entry whose file has gone). Opens a session that
+        writes nothing, so it is safe against a production database.
+    clean
+        Drop everything in the current schema, the ledger included. With
+        --dry-run it names what it would drop and drops nothing.
+    help
+        Display this help message and exit.
+
 OPTIONS:
     -h, --help
         Display this help message and exit.
@@ -25,8 +43,29 @@ OPTIONS:
         engines, *.json command documents for MongoDB. A file named
         *.repeatable.sql (or *.repeatable.json) runs again whenever its
         contents change; the rest run once, in order.
+        Read by migrate and status; clean does not need it.
+    --placeholder key=value
+        Substitute ${key} with value in every migration read during this run.
+        Repeat the option (--placeholder a=1 --placeholder b=2) or separate the
+        pairs with commas (--placeholder a=1,b=2). A ${...} nobody defined is
+        left exactly as it was, so a migration may carry its own template
+        syntax in a comment.
+    --dry-run
+        Read the plan and the statements of every migration that would run, and
+        change nothing: no statement is sent, no ledger row is written, and the
+        ledger is not created if it is missing. With clean it reports the drops
+        instead of performing them.
+    -v, --verbose
+        Show each statement in full -- multi-line bodies included -- instead of
+        the first line of it. Without this, a run reports its summary and one
+        line per statement.
     -r, --resources
         (optional) Path to internal application resources (used for development and installation)
         bundled from ./resources dir
+
+EXIT STATUS:
+    0   the command did what it was asked to do.
+    1   it could not: a migration failed, a connection was refused, an option
+        was missing or a URL named an engine other than --database.
 
 +----------------------------------------------------------------------------+
