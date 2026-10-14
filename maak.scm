@@ -62,6 +62,17 @@
   ($ '("find . -maxdepth 8 -name '*.scm'" "-type f -exec guix style -f {} \\;")
      #:verbose? #t))
 
+(define (test)
+  "Run the unit test suite with Veritas."
+  ;; `-L ./src' is the program, `-L ./test' is where the spec files live as
+  ;; modules, and `-L .' is where the shared test helpers live.  The runner
+  ;; scans ./ for test/veritas/unit by itself.
+  ($ (list "VERITAS_TEST_TYPE=unit" "VERITAS_RUN_BENCHMARKS=false"
+           "guix shell -m manifest.scm --"
+           "guile -L ./src -L ./test -L ."
+           "-c '((@ (veritas runner) run-tests))'")
+     #:verbose? #t))
+
 (define (repl)
   "Development REPL."
   (manifest-shell '("guile -L ./src"

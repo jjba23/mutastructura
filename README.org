@@ -20,7 +20,7 @@
 
 This tool ensures your relational schema and database state is exactly as you decree, incrementally.
 
-Compatible with SQLite3, MySQL and PostgreSQL. Write your schema migrations and seeding easily, and in your native database dialect.
+Compatible with SQLite3, MySQL/MariaDB, PostgreSQL (and its compatibles: CockroachDB, YugabyteDB, TimescaleDB) and MongoDB. Write your schema migrations and seeding easily, and in your native database dialect -- SQL where there is SQL, JSON command documents where there is not.
 
 -----------------
 
@@ -29,7 +29,8 @@ Compatible with SQLite3, MySQL and PostgreSQL. Write your schema migrations and 
 Mutastructura provides a declarative, transactional approach to managing your database states:
 
 - Written purely in Guile Scheme, bringing functional programming and S-expression elegance to your database migrations.
-- Native ~dbi~ support: ~sqlite3~ (TO FINALIZE! TBD! PostgreSQL and MySQL)
+- Native ~dbi~ support: ~sqlite3~, ~postgresql~, ~mysql~. Document databases are spoken to over the wire protocol instead, with a BSON codec and a SCRAM-SHA-256 handshake of its own.
+- One engine registry decides everything: ~--database mariadb~ is MySQL, ~--database crdb~ is CockroachDB through the PostgreSQL driver, and a family already implemented costs one line to add.
 - Auto-installs the schema management ~migrations_history~.
 - Every migration is executed within a ~with-transaction~ block and so, transactionally (from ~BEGIN~ to ~COMMIT~ you could say).
 - If a migration fails, the legion retreats (~ROLLBACK~), ensuring your database is never left in a corrupted, half-migrated state.
@@ -130,9 +131,9 @@ guix time-machine --channels=channels.scm -- \
 #+END_SRC
 
 ** Argument Details
-- ~-d~ / ~--database~ :: The engine you are targeting (~sqlite3~, ~postgresql~, ~mysql~).
-- ~-c~ / ~--connection~ :: The connection string or path to your database.
-- ~-m~ / ~--migrations~ :: The path to your ~*.sql~ migration files directory.
+- ~-d~ / ~--database~ :: The engine you are targeting: ~sqlite3~, ~postgresql~, ~cockroachdb~, ~mysql~ (or ~mariadb~) and ~mongodb~, plus the aliases each one accepts (~pg~, ~psql~, ~crdb~, ~percona~, ~mongo~, ~timescaledb~, ~yugabyte~...).
+- ~-c~ / ~--connection~ :: A URL, or the driver's own connection string. A URL is ~sqlite3:///var/lib/app.db~, ~postgresql://user:pass@host:5432/appdb~, ~mysql://user:pass@host:3306/appdb~ or ~mongodb://user:pass@host:27017/appdb?authSource=admin~; anything else is passed through as the engine's connection string.
+- ~-m~ / ~--migrations~ :: The path to your migrations directory: ~*.sql~ files for the SQL engines, ~*.json~ command documents for MongoDB.
 - ~-r~ / ~--resources~ :: (optional) Path to internal application resources (used for development and installation, bundled from ./resources dir).
 
 ----------------
@@ -140,9 +141,9 @@ guix time-machine --channels=channels.scm -- \
 * How it works (ARCHITECTURA)
 
 When invoked, Mutastructura:
-- Opens a connection to your specified database engine.
-- Queries the historical ledger (~migrations_history~) to see which migrations have already run, and  crossed the Rubicon.
-- If no history exists, it initializes the schema via platform-specific genesis files (~mutastructura-init.sql~).
+- Opens a connection to your specified database engine, through the runner its family selects: ~sql-runner~ over ~guile-dbi~ for the relational engines, ~mongodb-runner~ over the wire protocol for documents.
+- Queries the historical ledger (~migrations_history~, or ~_mutastructura_history~ where a collection is what holds it) to see which migrations have already run, and  crossed the Rubicon.
+- If no history exists, it initializes the schema via platform-specific genesis files (~mutastructura-init.sql~), or the collection and its unique key on the migration's name.
 - Scans your provided migrations directory, and gets migrations to run, in *chronological + alphabetical order* based on filename (anything works, but the best naming for this purpose is in the shape of ~YYYY-MM-DD_HH:MM:SS_some-name.sql~, e.g. ~2026-04-01_21:54:00_init.sql~)
 - Generates SHA256 hashes for each file. Changing the file contents means changing the SHA and will trigger a WARNING
 - Safely splits the SQL files into individual statements.

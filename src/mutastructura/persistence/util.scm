@@ -1,4 +1,4 @@
-;;; mutastructura - the CI/CD orchestrator written in Guile Scheme
+;;; mutastructura - Relational Schema Migrations Powered by Lisp
 
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
@@ -15,43 +15,65 @@
 ;; You should have received a copy of the GNU Affero General Public License
 ;; along with mutastructura.  If not, see <https://www.gnu.org/licenses/>.
 
-(define-module (mutastructura persistence util)
-  #:declarative? #t
-  #:use-module (srfi srfi-9)
-  #:use-module (ice-9 exceptions)
-  #:use-module (ice-9 string-fun)
-  #:use-module (ice-9 textual-ports)
-  #:use-module (dbi dbi)
-  #:use-module (mutastructura mutastructura)
-  #:export (symbols->sql-columns-list sql-row->scheme-alist
-                                      symbol->sql-column
-                                      sql-column->symbol
-                                      alist?
-                                      get-all-rows
-                                      value->sql-literal
-                                      pair->sql-assignment
-                                      statement-status
-                                      status-unreported?
-                                      run-stmt
-                                      with-transaction))
-
-;;; --- Reading the driver's answer ---
-
+;;; Commentary:
+;;
+;; Everything that touches guile-dbi lives here, in one place, so the way a
+;; driver's answer is read is decided once rather than at every call site.
+;;
 ;; guile-dbi answers a statement with a pair: `(0 . "query ok")' when it went
-;; through, and `(1 . "<the message SQLite gave>')' when it did not.  A driver
-;; that cannot report on the handle at all answers with a message of guile-dbi's
-;; own -- `invalid module handle', or `file not found' when it was opened against
-;; something it did not bind -- rather than with anything SQLite said.  Those two
-;; are not the statement failing: `dbi-query' is what runs a statement and what
-;; raises when the connection is unusable, and the statements in a run like that
-;; are applied all the same.  So the three readings are kept apart, and only the
-;; third -- code 1 with a message the database itself wrote -- fails a migration.
+;; through, and `(1 . "<the message the database gave>")' when it did not.  A
+;; driver that cannot report on the handle at all answers with a message of its
+;; own -- `invalid module handle', or `file not found' -- rather than with
+;; anything the database said.  Those two are not the statement failing:
+;; `dbi-query' is what runs a statement and what raises when the connection is
+;; unusable, so the three readings are kept apart and only the third -- code 1
+;; with a message the database itself wrote -- fails a statement.
 ;;
 ;; This used to be read with `(eq? 0 (car st))' and `(eq? '(0 . "query ok"))':
 ;; the second can never hold (`eq?' on a freshly made list is #f), and the fall
 ;; through to a raise turned every answer it did not recognise -- including a
 ;; driver that could not answer -- into a failed migration, which rolled back a
 ;; schema that had in fact been applied.
+
+(define-module (mutastructura persistence util)
+  #:declarative? #t
+  #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-9)
+  #:use-module (ice-9 exceptions)
+  #:use-module (ice-9 string-fun)
+  #:use-module (ice-9 textual-ports)
+  #:use-module (dbi dbi)
+  #:use-module (mutastructura mutastructura)
+  #:use-module (mutastructura persistence dialect)
+  #:export (status-unreported?
+            statement-status
+            statement-failed?
+            driver-message
+            open-database
+            database-open?
+            close-database
+            execute-sql!
+            fetch-sql-rows
+            run-stmt
+            with-transaction
+            get-all-rows
+            sql-row->scheme-alist
+            symbols->sql-columns-list
+            symbol->sql-column
+            sql-column->symbol
+            alist?
+            value->sql-literal
+            pair->sql-assignment
+            migration-exception
+            migration-exception?
+            migration-exception-message
+            raise-migration-error
+            error-message-of))
+
+;;; ---------------------------------------------------------------------------
+;;; Reading the driver's answer
+;;; ---------------------------------------------------------------------------
+
 (define (status-unreported? message)
   "Whether MESSAGE is guile-dbi's own, rather than the database's."
   (and (string? message)
@@ -77,73 +99,166 @@ pair `(failed . MESSAGE)' with what the database said."
     (else (cons 'failed
                 (cdr status)))))
 
-;;; --- DB Execution ---
+(define (statement-failed? reading)
+  "Whether READING, from `statement-status', is a failure."
+  (and (pair? reading)
+       (eq? (car reading) 'failed)))
 
-(define (run-stmt db)
-  (lambda (stmt)
-    (format #t "\n\n~a" stmt)
-    (dbi-query db stmt)
-    (let* ((reading (statement-status (dbi-get_status db))))
+(define (driver-message reading)
+  "The database's own words for READING, or a description of the answer."
+  (if (pair? reading)
+      (format #f "~a" (cdr reading))
+      (format #f "~a" reading)))
+
+;;; ---------------------------------------------------------------------------
+;;; Errors
+;;; ---------------------------------------------------------------------------
+
+(define-record-type <migration-exception>
+  (make-migration-exception message irritants)
+  migration-exception?
+  (message migration-exception-message)
+  (irritants migration-exception-irritants))
+
+(define (error-message-of ex)
+  "The message inside EX, whether it is ours or a Guile condition."
+  (cond
+    ((migration-exception? ex)
+     (migration-exception-message ex))
+    ((exception-with-message? ex)
+     (condition-message ex))
+    ((condition? ex)
+     (condition-message (make-message-condition (format #f "~a" ex))))
+    (else (format #f "~a" ex))))
+
+(define (raise-migration-error message . irritants)
+  "Raise a migration error carrying MESSAGE."
+  (raise-exception (make-migration-exception message irritants)))
+
+;;; ---------------------------------------------------------------------------
+;;; Connections
+;;; ---------------------------------------------------------------------------
+
+(define* (open-database engine connection #:key (context #f))
+  "Open a guile-dbi connection to ENGINE, or explain why not.
+
+`dbi-open' reports a failed connection in the handle's status instead of
+raising, so a run against an unreachable server used to continue and then fail
+somewhere far away with `invalid module handle'.  Checking here means the
+message names the host and the reason."
+  (let ((db (dbi-open (parse-db-type (engine-id engine)) connection)))
+    (let ((reading (statement-status (dbi-get_status db))))
       (cond
-        ;; A driver that cannot report is said so once, where the connection is
-        ;; opened, rather than once per statement; the statements themselves are
-        ;; applied either way.
-        ((or (eq? reading
-                  'ok)
-             (eq? reading
-                  'unreported))
-         #t)
-        (else (raise-exception (make-exception-with-message (format #f "~a"
-                                                                    (cdr
-                                                                     reading)))))))))
+        ((eq? reading 'ok)
+         db)
+        ((eq? reading 'unreported)
+         ;; A driver that cannot report is still usable; the caller is told once
+         ;; by `database-open?', and `execute-sql!' will catch real failures.
+         db)
+        (else
+         (catch #t
+                (lambda () (close-database db))
+                (lambda _ #f))
+         (raise-migration-error
+          (format #f "could not connect to ~a: ~a~a"
+                  (engine-id engine)
+                  (driver-message reading)
+                  (or-empty (and context (format #f " (~a)" context))))))))))
 
-(define (with-transaction db thunk)
-  (let* ((on-success (lambda (db)
-                       (dbi-query db "COMMIT")
-                       (format #t "
+(define (database-open? db)
+  "Whether DB's driver is willing to report on the connection at all."
+  (eq? (statement-status (dbi-get_status db)) 'ok))
 
-[SUCCESS] COMMIT TRANSACTION SUCCESSFULLY
-")
-                       #t))
-         (on-error (lambda (st)
-                     (format #t "\n\n[ERROR] ~a\n"
-                             (cdr st))
-                     (raise-exception (make-exception-with-message (format #f
-                                                                    "~a"
-                                                                    (cdr st)))))))
-    (with-exception-handler (lambda (ex)
-                              (format #t
-                               "
-[ERROR] MIGRATION FAILED, ROLL BACK CHANGES...
-~a
-"
-                               ex)
-                              (dbi-query db "ROLLBACK")
-                              (raise-exception ex))
-                            (lambda ()
-                              (dbi-query db "BEGIN")
-                              (thunk)
-                              (let* ((reading (statement-status (dbi-get_status
-                                                                 db))))
-                                (cond
-                                  ((eq? reading
-                                        'ok)
-                                   (on-success db))
-                                  ((eq? reading
-                                        'unreported)
-                                   (on-success db))
-                                  (else (on-error reading))))))))
+(define (close-database db)
+  "Close DB, doing nothing if it is already closed.
 
-(define (get-all-rows db query)
-  (dbi-query db query)
-  (let loop
-    ((acc '()))
+Closing twice is normal: the failure path closes and so does the exit path, and
+a driver that answers `invalid module handle' to the second call must not turn a
+successful migration into a failed run."
+  (catch #t
+         (lambda () (dbi-close db))
+         (lambda _ #f)))
+
+;;; ---------------------------------------------------------------------------
+;;; Statements
+;;; ---------------------------------------------------------------------------
+
+(define* (execute-sql! db sql #:key (context #f))
+  "Run SQL on DB, raising with CONTEXT's help if the database refused it."
+  (catch #t
+         (lambda () (dbi-query db sql))
+         (lambda (key . args)
+           (raise-migration-error
+            (format #f "~athe driver raised ~a~a"
+                    (or-empty (and context (format #f "~a: " context)))
+                    key
+                    (if (pair? args)
+                        (catch #t
+                               (lambda () (error-message-of (car args)))
+                               (lambda _ (format #f " (~a)" args)))
+                        "")))))
+  (let ((reading (statement-status (dbi-get_status db))))
+    (cond
+      ((eq? reading 'ok) #t)
+      ((eq? reading 'unreported) #t)
+      (else
+       (raise-migration-error
+        (format #f "~a~a" (or-empty (and context (format #f "~a: " context)))
+                (driver-message reading)))))))
+
+(define* (fetch-sql-rows db sql #:key (context #f))
+  "Run SQL on DB, returning every row as an alist.
+
+A query that fails raises here rather than returning no rows: an empty answer
+and a refusal are very different things, and the planner's decisions -- is the
+ledger there? is the table there? -- depend on the difference."
+  (execute-sql! db sql #:context context)
+  (let loop ((acc '()))
     (let ((row (dbi-get_row db)))
-      (if (pair? row) ;Safely checks for valid row data
+      (if (pair? row)
           (loop (cons (sql-row->scheme-alist row) acc))
           (reverse acc)))))
 
-;;; --- SQL Generation & Escaping ---
+(define (run-stmt db)
+  "Return a procedure that runs one statement on DB."
+  (lambda (stmt)
+    (execute-sql! db stmt #:context "migration statement")
+    (format #t "~a" stmt)))
+
+(define* (with-transaction db thunk #:key (engine #f) (on-success #f) (on-error #f))
+  "Run THUNK inside a transaction on DB.
+
+The transaction's dialect comes from ENGINE: SQLite opens with `BEGIN IMMEDIATE'
+so that the write lock is taken before the first read of the ledger, which is
+what makes two concurrent runs safe rather than merely unlikely to collide."
+  (let* ((begin (if engine (dialect-begin-statement engine) "BEGIN"))
+         (commit (if engine (dialect-commit-statement engine) "COMMIT"))
+         (rollback (if engine (dialect-rollback-statement engine) "ROLLBACK")))
+    (execute-sql! db begin #:context "begin transaction")
+    (with-exception-handler
+     (lambda (ex)
+       (catch #t
+              (lambda () (execute-sql! db rollback #:context "rollback"))
+              (lambda _ #f))
+       (raise-exception ex))
+     (lambda ()
+       (let ((result (thunk)))
+         (execute-sql! db commit #:context "commit transaction")
+         (when on-success (on-success result))
+         result)))))
+
+(define (get-all-rows db query)
+  "Every row of QUERY as an alist of symbol to value.
+
+Kept for callers of the original API; new code should prefer `fetch-sql-rows',
+which also reports a query that failed."
+  (catch #t
+         (lambda () (fetch-sql-rows db query))
+         (lambda _ '())))
+
+;;; ---------------------------------------------------------------------------
+;;; Rows
+;;; ---------------------------------------------------------------------------
 
 (define (symbol->sql-column x)
   (string-replace-substring (symbol->string x) "-" "_"))
@@ -165,35 +280,45 @@ pair `(failed . MESSAGE)' with what the database said."
     (else (alist? (cdr obj)))))
 
 (define (sql-row->scheme-alist xs)
+  "A driver row as an alist keyed on symbols.
+
+Drivers disagree about the key type: sqlite3 hands back symbols, PostgreSQL and
+MySQL strings.  Normalising here means the rest of the program has one shape to
+read."
   (if (alist? xs)
       (map (lambda (pair)
-             (cons (sql-column->symbol (car pair))
-                   (cdr pair))) xs) xs))
+             (cons (if (symbol? (car pair))
+                       (sql-column->symbol (symbol->string (car pair)))
+                       (sql-column->symbol (format #f "~a" (car pair))))
+                   (cdr pair)))
+           xs)
+      xs))
 
+;;; ---------------------------------------------------------------------------
+;;; Literals
+;;; ---------------------------------------------------------------------------
+
+;; Kept because they are exported and used by callers of the library API; the
+;; engine-aware `dialect-literal' is what the runner itself uses.
 (define (escape-sql-string str)
-  "Helper to prevent SQL injection and syntax errors"
+  "A string with its single quotes doubled."
   (string-replace-substring str "'" "''"))
 
 (define (pair->sql-assignment a)
+  "An `column = value' assignment for a pair A."
   (cond
     ((number? (cdr a))
-     (format #f "~a = ~a"
-             (symbol->sql-column (car a))
-             (cdr a)))
-    ((eq? #t
-          (cdr a))
-     (format #f "~a = 1"
-             (symbol->sql-column (car a))))
-    ((eq? #f
-          (cdr a))
-     (format #f "~a = 0"
-             (symbol->sql-column (car a))))
+     (format #f "~a = ~a" (symbol->sql-column (car a)) (cdr a)))
+    ((eq? #t (cdr a))
+     (format #f "~a = 1" (symbol->sql-column (car a))))
+    ((eq? #f (cdr a))
+     (format #f "~a = 0" (symbol->sql-column (car a))))
     (else (format #f "~a = '~a'"
                   (symbol->sql-column (car a))
-                  (escape-sql-string (format #f "~a"
-                                             (cdr a)))))))
+                  (escape-sql-string (format #f "~a" (cdr a)))))))
 
 (define (value->sql-literal a)
+  "A as a SQL literal, with strings escaped."
   (cond
     ((number? a)
      (number->string a))
@@ -201,6 +326,7 @@ pair `(failed . MESSAGE)' with what the database said."
      "1")
     ((eq? #f a)
      "0")
+    ((null? a)
+     "NULL")
     (else (format #f "'~a'"
                   (escape-sql-string (format #f "~a" a))))))
-

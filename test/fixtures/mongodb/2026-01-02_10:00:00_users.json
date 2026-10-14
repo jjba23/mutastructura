@@ -1,0 +1,17 @@
+{
+  "commands": [
+    {
+      "create": "users"
+    },
+    {
+      "createIndexes": "users",
+      "indexes": [
+        {
+          "key": {"email": 1},
+          "name": "email_1",
+          "unique": true
+        }
+      ]
+    }
+  ]
+}

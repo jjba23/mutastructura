@@ -1,5 +1,6 @@
 dist/
 .nrepl-port
 doc/
+reports/
 lucidplan-test.sqlite
 .docker-tag
