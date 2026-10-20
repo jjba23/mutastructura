@@ -1,0 +1,410 @@
+#+TITLE: MUTASTRUCTURA -- Roadmap and comparison
+#+AUTHOR: Mutastructura contributors
+#+LANGUAGE: en
+#+OPTIONS: toc:t num:nil
+
+* Why this document
+
+Mutastructura is an SQL-first migration tool: a migration is a file of SQL, the
+ledger is a table of checksums, and every command is the same plan read in a
+different way.  That is deliberately narrower than Alembic or Django, which own
+a model layer, and than Liquibase, which owns a changelog format.  The question
+here is what a *small* SQL-first tool should borrow from its neighbours without
+becoming one of them.
+
+This document records: the current state (as of 2026-10-20), a comparison with
+the established Python and Java tools, the improvements implemented in this
+pass, and a prioritised roadmap with concrete designs and acceptance criteria.
+
+* Where mutastructura stands
+
+** Commands
+
+| Command    | What it does                                                        |
+|------------+---------------------------------------------------------------------|
+| ~migrate~  | applies pending migrations in order, recording each in the ledger    |
+| ~status~   | reports every migration's state and every problem, writes nothing   |
+| ~validate~ | the same report, but exits 1 when ledger and files disagree         |
+| ~rollback~ | undoes applied migrations, newest first, with ~*.undo.sql~ scripts  |
+| ~repair~   | forgets recorded failures, realigns changed checksums               |
+| ~clean~    | drops every object the catalogue reports, the ledger included       |
+| ~help~     | prints the bundled help text                                        |
+
+** Flags that reach into a run
+
+| Flag                 | Meaning                                                      |
+|----------------------+--------------------------------------------------------------|
+| ~-d/--database~      | sqlite3, postgresql, cockroachdb, mysql/mariadb and aliases  |
+| ~-c/--connection~    | URL or guile-dbi connection string                           |
+| ~-m/--migrations~    | migration directory; not needed by ~clean~                   |
+| ~--placeholder~      | ~key=value~ substitution of ~${key}~, repeatable             |
+| ~--target~           | stop at a version                                            |
+| ~--out-of-order~     | allow an older pending migration to run                      |
+| ~--to~ / ~--steps~   | rollback as far as a version, or N migrations                |
+| ~--all~              | rollback as far as undo scripts allow                        |
+| ~--allow-irreversible~ | roll back past an author's irreversible directive          |
+| ~--dry-run~          | report statements or drops and change nothing                |
+| ~-v/--verbose~       | each statement in full                                       |
+| ~-r/--resources~     | bundled resources directory                                  |
+
+** What the engine layer already gives us
+
+- Transactional runs where the engine can undo DDL, with an honest message on
+  MySQL where it cannot.
+- A migration lock: the transaction itself on SQLite, ~pg_advisory_lock~ on
+  PostgreSQL, ~GET_LOCK~ on MySQL, and the transaction plus the ledger's unique
+  name key on CockroachDB.
+- SHA-256 checksums in ~migrations_history~, plus ~changed~ and ~missing~
+  detection.
+- Repeatable migrations (~*.repeatable.sql~) rerun when their checksum changes,
+  exactly like Flyway's repeatable migrations.
+- ~${key}~ placeholders, ~--dry-run~ statement reporting, and a real SQL lexer
+  (nested comments, dollar quoting, ~DELIMITER~, trigger bodies).
+- Five engines through guile-dbi, including PostgreSQL-compatible databases such
+  as CockroachDB, YugabyteDB and TimescaleDB.
+
+** What is missing, and why it matters
+
+| Gap                          | Consequence today                                      |
+|------------------------------+--------------------------------------------------------|
+| No baseline / stamp          | adopting an existing database means hand-writing rows  |
+| No offline SQL output        | ~--dry-run~ is a report, not an executable script      |
+| No hooks/callbacks           | no place for grants, extensions, or post-migrate checks|
+| Fixed lock wait              | a stuck run has no timeout and no recovery command     |
+| No per-migration transaction | a ~CREATE INDEX CONCURRENTLY~ cannot opt out            |
+| Filename ordering only       | no dependency graph for out-of-order work              |
+| No schema selection          | multi-schema PostgreSQL needs qualified SQL            |
+| No squashing                 | long histories replayed forever in new environments    |
+| No machine-readable output   | CI must parse human text                               |
+
+* Comparison with Python and Java tools
+
+** The tools in one paragraph each
+
+- *Alembic* (Python/SQLAlchemy): an explicit revision graph, ~upgrade~ /
+  ~downgrade~, ~stamp~, ~history~, ~current~, ~heads~, ~branches~, ~merge~,
+  ~check~, and connection-free SQL generation with ~--sql~.  Autogeneration is a
+  candidate, not a promise.
+- *Django* (Python): migrations are generated from model state, applied with
+  ~migrate~, inspected with ~showmigrations~, printed with ~sqlmigrate~, squashed
+  with ~squashmigrations~, and baselined with ~--fake-initial~.  Lifecycle
+  signals and database aliases are first-class.
+- *Flyway* (Java): the closest relative.  Versioned and repeatable SQL files,
+  ~migrate~, ~info~, ~validate~, ~repair~, ~baseline~, ~clean~, ~undo~ (paid
+  tier), placeholders, callbacks, ~target~, ~outOfOrder~, and a checksum-bearing
+  schema history table.
+- *Liquibase* (Java): changesets in XML/YAML/JSON or formatted SQL, with
+  ~update~, ~status~, ~validate~, ~rollback~, ~changelog-sync~, ~update-sql~, a
+  checksum per changeset, a lock table, preconditions, contexts and labels.
+- *yoyo* (Python): reversible steps, per-migration transactions and savepoints,
+  a ~post-apply~ hook, ~mark~ / ~unmark~ for baselining, ~break-lock~, and
+  dependency declarations.
+- *Sqitch*, *Goose*, *Prisma Migrate*: verification scripts (~verify~), up/down
+  annotations with ~NO TRANSACTION~, provider locks, shadow-database drift
+  checks, and documented squashing/baselining workflows.
+
+** Capability matrix
+
+Y = first-class, P = partial or with caveats, N = absent.
+
+| Capability                | Mutastructura | Alembic | Django | Flyway | Liquibase | yoyo |
+|---------------------------+---------------+---------+--------+--------+-----------+------|
+| Forward migrate           | Y             | Y       | Y      | Y      | Y         | Y    |
+| Plan / status             | Y             | Y       | Y      | Y      | Y         | Y    |
+| Validate history          | Y             | P       | P      | Y      | Y         | P    |
+| Repair history            | Y             | P       | P      | Y      | P         | P    |
+| Rollback / undo           | Y             | Y       | Y      | P      | Y         | Y    |
+| Baseline / stamp          | N             | Y       | Y      | Y      | Y         | Y    |
+| Offline SQL output        | N             | Y       | P      | P      | Y         | N    |
+| Repeatable migrations     | Y             | N       | N      | Y      | P         | P    |
+| Placeholders              | Y             | P       | N      | Y      | Y         | P    |
+| Hooks / callbacks         | N             | Y       | Y      | Y      | P         | P    |
+| Checksums                 | Y             | N       | N      | Y      | Y         | P    |
+| Migration lock            | Y             | P       | P      | Y      | Y         | Y    |
+| Target version            | Y             | Y       | Y      | Y      | P         | P    |
+| Out-of-order              | Y             | P       | P      | Y      | N         | P    |
+| Dependency graph          | N             | Y       | Y      | N      | P         | Y    |
+| Squashing                 | N             | N       | Y      | N      | N         | N    |
+| Multi-database            | Y             | P       | Y      | Y      | Y         | P    |
+| Multi-schema              | N             | P       | P      | Y      | Y         | P    |
+| Autogeneration            | N             | Y       | Y      | N      | P         | N    |
+
+The pattern is clear: mutastructura already matches Flyway on the migration
+model (versioned + repeatable + checksums + placeholders + target/out-of-order +
+validate/repair/rollback), and trails it on the operational edges -- baseline,
+hooks and offline SQL -- plus on ecosystem breadth.  It should not chase
+autogeneration or a dependency graph until the operational edges are closed.
+
+* What this pass implemented
+
+The planner already knew how to hold migrations back, and the runner already
+knew how to forget a ledger row; neither was reachable from the command line.
+These five changes expose that existing logic rather than adding new machinery.
+
+** ~rollback~
+
+~rollback~ undoes applied migrations, newest first, by pairing each one with the
+~*.undo.sql~ file of the same version.  The planner is a pure function,
+~rollback-plan~, and it models the fact that not every migration can be
+reversed:
+
+- no undo script: blocked;
+- the author wrote ~-- mutastructura: irreversible~: blocked even when an undo
+  script exists, unless ~--allow-irreversible~ is given;
+- the ledger records a failure: blocked, because ~repair~ is the command for
+  that state.
+
+One migration is undone by default.  ~--steps N~ and ~--to VERSION~ are
+all-or-nothing: if anything in the requested range is blocked, the whole
+rollback is refused before a statement runs, because undoing an earlier schema
+underneath a later migration is worse than refusing.  ~--all~ is the smart
+boundary: it undoes the newest contiguous run that can be undone, names the
+migration that stopped it, and exits 0 for the work it did.  Repeatables are
+left alone; ~migrate~ re-runs them when their contents change.
+
+The undo scripts run inside the same transaction and lock as a forward run, and
+the ledger row is forgotten only after its script succeeds.
+
+#+begin_src shell
+mutastructura rollback -m ./migrations -c ./app.db -d sqlite3 --steps 2
+mutastructura rollback -m ./migrations -c ./app.db -d sqlite3 --all --dry-run
+#+end_src
+
+** ~--target VERSION~
+
+~migrate~, ~status~ and ~validate~ accept a version at which to stop.  The
+migration whose version is the target runs, everything below runs, everything
+above is reported as ~beyond-target~.  A date is a prefix, so
+~--target 2026-04-01~ covers that whole day.  This is Flyway's ~target~.
+
+#+begin_src shell
+mutastructura migrate -m ./migrations -c ./app.db -d sqlite3 --target 2026-04-01
+#+end_src
+
+** ~--out-of-order~
+
+A pending migration older than the newest applied one is ~superseded~ and held
+back.  With ~--out-of-order~ it runs, and the warning disappears.  This is
+Flyway's ~outOfOrder~, and the safer default is why the flag is explicit.
+
+** ~validate~
+
+~status~ reports problems and exits 0, which is useless as a CI gate.
+~validate~ builds the same plan with ~#:validate? #t~, prints the same table,
+and exits 1 with ~[error] validation failed: N migration(s) need attention~ when
+a file changed after it was applied or a ledger entry's file has gone.
+
+#+begin_src shell
+mutastructura validate -m ./migrations -c "$DATABASE_URL" -d postgresql
+#+end_src
+
+** ~repair~
+
+Two disagreements can be repaired, and each is named before it is touched:
+
+- a ledger row that records a failure is forgotten, so the migration is tried
+  again;
+- a migration whose file changed after it was applied has its checksum
+  realigned, which knowingly accepts the file as it now stands.
+
+~--dry-run~ names the rows and writes nothing.  This is Flyway's ~repair~,
+narrowed to the two cases an SQL-first tool can decide without guessing.
+
+#+begin_src shell
+mutastructura repair -m ./migrations -c ./app.db -d sqlite3 --dry-run
+#+end_src
+
+** Where it lives
+
+- ~repair-candidates~ in ~(mutastructura mutastructura)~ is a pure function, so
+  the selection rule is unit-tested without a database.
+- ~run-validate~ and ~run-repair~ in ~(mutastructura main)~ only report and call
+  the runner's existing ~record!~ / ~forget!~ verbs.
+- ~rollback-plan~, ~rollback-candidates~ and ~migration-irreversible?~ are pure
+  and unit-tested; ~run-rollback~ reuses ~runner-apply!~ and ~runner-forget!~.
+- The wrapper script, ~resources/help.txt~ and the README document the new flags
+  and commands.
+
+* Roadmap
+
+Effort is S (under a day), M (a day or two), L (a week or more) for one
+developer familiar with the code.
+
+** P0 -- close the operational gap with Flyway
+
+*** 1. ~baseline~ / ~stamp~
+
+- *Why*: adopting the tool on an existing database must not mean replaying the
+  schema.  Alembic ~stamp~, Django ~--fake-initial~, Flyway ~baseline~,
+  Liquibase ~changelog-sync~, yoyo ~mark~ all solve this.
+- *Shape*: ~mutastructura baseline -m DIR -c CONN -d ENGINE VERSION~ records every
+  migration up to and including VERSION as applied, with its real checksum and
+  the current timestamp, and runs no SQL.  It refuses when the ledger already has
+  entries unless ~--force~.  ~--dry-run~ names the rows.
+- *Where*: reuse ~runner-record!~; a pure ~plan-baseline~ that selects files at or
+  below the version (the existing ~within-target?~ already does the comparison).
+- *Effort*: S/M. *Risk*: low, provided the command says plainly that it records
+  state and does not verify the schema.
+
+*** 2. Offline SQL output (~migrate --sql~)
+
+- *Why*: DBAs and review pipelines want the script without the connection.
+  Alembic ~--sql~ and Liquibase ~update-sql~ make this a first-class mode;
+  Flyway has it in paid tiers.
+- *Shape*: ~--sql~ prints only executable SQL, one statement per ~;~, with
+  placeholders already substituted and optional ~--target~.  The banner, logs and
+  human report are suppressed.  A header comment names the migration each block
+  came from, and a footer says whether the engine can wrap the run in a
+  transaction.
+- *Where*: ~log-dry-run~ already computes the statements through
+  ~runner-statements~; add a rendering mode instead of a second parser.
+- *Effort*: S. *Risk*: low.  Do not pretend the script is validated against a
+  live server.
+
+** P1 -- operational polish
+
+*** 3. Hooks / callbacks
+
+- *Why*: Flyway callbacks, Django ~pre_migrate~ / ~post_migrate~, yoyo's
+  ~post-apply~.  Grants, extensions, and post-migration checks have nowhere to
+  live today.
+- *Shape*: SQL files in a ~hooks/~ directory (or ~--hooks DIR~) named
+  ~before-migrate.sql~, ~after-migrate.sql~, ~before-each.sql~, ~after-each.sql~,
+  ~after-clean.sql~.  They receive placeholders, are not recorded in the ledger,
+  and a failure aborts the run.  Document that a hook is not a migration.
+- *Effort*: M. *Risk*: low if hooks are excluded from discovery explicitly.
+
+*** 4. Lock timeout and a recovery path
+
+- *Why*: yoyo ships ~break-lock~; Sqitch and Prisma document lock timeouts.  On
+  MySQL ~GET_LOCK~ currently waits ten seconds without a flag; on PostgreSQL the
+  advisory lock blocks indefinitely.
+- *Shape*: ~--lock-timeout SECONDS~, implemented with the timeout form of each
+  engine's primitive (~pg_try_advisory_lock~ in a loop, MySQL's fourth
+  ~GET_LOCK~ argument, SQLite's busy timeout).  A timed-out run says which lock
+  and which process holds it where the engine can report it.
+- *Effort*: M. *Risk*: medium -- dialect-specific SQL, but the dialect module
+  already owns exactly this kind of difference.
+
+*** 5. Per-migration transaction control
+
+- *Why*: Goose's ~NO TRANSACTION~ exists for statements the engine cannot run in
+  a transaction (~CREATE INDEX CONCURRENTLY~, MySQL DDL).
+- *Shape*: a leading directive comment, ~-- mutastructura: no-transaction~,
+  recognised by the SQL parser's existing directive pass.  The runner opens no
+  transaction for that migration, records it on success, and reports that a
+  failure leaves what ran in place.
+- *Effort*: M. *Risk*: medium -- the planner and lock behaviour must remain
+  coherent.
+
+*** 6. Machine-readable status
+
+- *Why*: CI wants data, not tables.  Alembic and Liquibase both expose scriptable
+  reporting, and parsers of human output break.
+- *Shape*: ~status --format json~ (and ~validate --format json~) emitting an array
+  of ~{name, version, kind, state, checksum, applied_on, success}~ objects, plus a
+  summary.  No new dependency: hand-written JSON escaping belongs in the JSON
+  module that would return with it, or a tiny writer.
+- *Effort*: S. *Risk*: low.
+
+*** 7. Configuration file and environment
+
+- *Why*: repeating ~-m~, ~-d~, ~-c~ and ~-r~ is the commonest papercut; Flyway
+  and Liquibase both have configuration files, and Django has settings.
+- *Shape*: a ~.mutastructura.scm~ (it is a Guile project) or a simple key=value
+  file at the migration directory root, with flags overriding it.  Connection
+  strings may come from environment variables, never from the committed file.
+- *Effort*: S/M. *Risk*: low, with a strict precedence rule.
+
+** P2 -- larger bets
+
+*** 8. Migration dependencies
+
+- yoyo and Sqitch allow declared dependencies.  A ~-- depends: <version>~ header
+  would let the planner topologically sort and reject cycles, solving the
+  out-of-order problem more honestly than a global flag.
+- Effort L; it turns a linear plan into a DAG and touches every status report.
+
+*** 9. Squashing
+
+- Django ~squashmigrations~ and Prisma's documented squash-and-baseline flow.
+  An SQL-first squash must concatenate files, preserve repeatables, and baseline
+  the consolidated version; it is only safe once ~baseline~ exists.
+- Effort L; keep the original files in version control and make the transition
+  explicit.
+
+*** 10. Schema selection and multi-schema targets
+
+- Flyway's ~schemas~ / ~defaultSchema~, yoyo's schema-in-URL, Django's database
+  aliases.  Add ~--schema NAME~ for PostgreSQL and MySQL, create it when asked,
+  and place the ledger there; document that unqualified SQL follows the session
+  search path.
+- Effort M/L; needs care with ~clean~, which currently drops the current schema.
+
+* Sequencing
+
+1. ~baseline~ is the feature a team adopting the tool on an existing database
+   asks for first, and it is small because recording reuses ~runner-record!~.
+2. Offline SQL (~--sql~) is small and makes the tool reviewable without a
+   database; do it in the same release.
+3. Hooks and lock timeout next, because they are operational rather than
+   structural.
+4. Defer dependencies, squashing and schema selection until there is a user
+   asking for each; they change the plan's shape and deserve a design note of
+   their own.
+
+* Non-goals
+
+- *Autogeneration from a model layer*: Alembic and Django own the model; an
+  SQL-first tool does not, and a half-accurate diff is worse than none.
+- *Revision graphs with branch and merge*: Alembic's model solves parallel
+  development in one database; mutastructura's linear history is a feature for
+  the deployments it targets.  Dependencies (P2) are the pragmatic middle.
+- *Live-schema drift detection*: Prisma's shadow database replays history to
+  compare schemas.  That is a different product; checksums plus ~validate~ cover
+  history integrity, and ~clean~ plus a scratch database covers verification.
+- *Automatic rollback generation*: Liquibase can generate rollback for modeled
+  changesets, not for arbitrary SQL.  Undo files are authored, and that is
+  honest.
+
+* Sources
+
+- Alembic commands: https://alembic.sqlalchemy.org/en/latest/api/commands.html
+- Alembic branches: https://alembic.sqlalchemy.org/en/latest/branches.html
+- Alembic offline SQL: https://alembic.sqlalchemy.org/en/latest/offline.html
+- Django migrations: https://docs.djangoproject.com/en/6.1/topics/migrations/
+- Django admin commands: https://docs.djangoproject.com/en/6.1/ref/django-admin/
+- Django migration signals: https://docs.djangoproject.com/en/6.1/ref/signals/
+- Flyway migrations and repeatables:
+  https://documentation.red-gate.com/fd/migrations-271585107.html
+- Flyway history, validation and repair:
+  https://documentation.red-gate.com/fd/flyway-schema-history-table-273973417.html
+- Flyway target: https://documentation.red-gate.com/fd/flyway-target-setting-277579044.html
+- Flyway out-of-order:
+  https://documentation.red-gate.com/fd/flyway-out-of-order-setting-277579015.html
+- Flyway callbacks: https://documentation.red-gate.com/fd/callbacks-275218509.html
+- Flyway feature summary:
+  https://documentation.red-gate.com/fd/feature-summary-165740620.html
+- Liquibase formatted SQL:
+  https://docs.liquibase.com/oss/user-guide-4-33/sql-changelog-example
+- Liquibase update-sql:
+  https://docs.liquibase.com/secure/reference-guide-5-2-2/init-update-and-rollback-commands/update-sql
+- Liquibase checksums:
+  https://docs.liquibase.com/secure/user-guide-5-2-2/what-is-a-changeset-checksum
+- Liquibase changelog-sync:
+  https://docs.liquibase.com/secure/reference-guide-5-2-2/database-inspection-change-tracking-and-utility-commands/changelog-sync
+- Liquibase automatic rollback limits:
+  https://docs.liquibase.com/secure/user-guide-5-2-2/what-automatic-rollbacks-does-liquibase-support
+- Liquibase runInTransaction:
+  https://docs.liquibase.com/secure/reference-guide-5-2-2/changelog-attributes/runintransaction
+- yoyo: https://ollycope.com/software/yoyo/latest/
+- Sqitch commands: https://sqitch.org/docs/manual/sqitch/
+- Sqitch deploy: https://sqitch.org/docs/manual/sqitch-deploy/
+- Goose annotations: https://pressly.github.io/goose/documentation/annotations/
+- Goose CLI: https://pressly.github.io/goose/documentation/cli-commands/
+- Prisma baselining:
+  https://www.prisma.io/docs/orm/v7/prisma-migrate/workflows/baselining
+- Prisma squashing:
+  https://www.prisma.io/docs/orm/v7/prisma-migrate/workflows/squashing-migrations
+- Prisma shadow database:
+  https://www.prisma.io/docs/orm/v7/prisma-migrate/understanding-prisma-migrate/shadow-database

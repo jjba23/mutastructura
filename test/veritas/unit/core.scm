@@ -693,7 +693,209 @@
                                                      files history
                                                      #:out-of-order? #t))
                                                'action)
-                               #:name "unless out-of-order runs are allowed")))))
+                               #:name "unless out-of-order runs are allowed")))
+         (test "repair names the recorded failures and the changed files"
+               #:shuffle? #f
+               ;; What repair acts on, and only that: a healthy applied
+               ;; migration is not a candidate, and the two kinds of repair are
+               ;; told apart by the state the plan already reports.
+               (let* ((file (migration-file init-file))
+                      (name (migration-name file))
+                      (checksum (file-sha256 init-file))
+                      (healthy (plan-migrations (list file)
+                                                (list (entry name checksum))))
+                      (changed (plan-migrations (list file)
+                                                (list (entry name "stale"))))
+                      (failed (plan-migrations
+                               (list file)
+                               (list (list (cons 'name name)
+                                           (cons 'checksum checksum)
+                                           (cons 'success 0))))))
+                 (assert-length #:expect 0 #:got (repair-candidates healthy)
+                                #:name "nothing to repair when the ledger agrees")
+                 (assert-length #:expect 1 #:got (repair-candidates changed)
+                                #:name "a changed file is a candidate")
+                 (assert-equal #:expect 'changed
+                               #:got (assq-ref (car (repair-candidates changed))
+                                               'state)
+                               #:name "which repair realigns")
+                 (assert-length #:expect 1 #:got (repair-candidates failed)
+                                #:name "and so is a recorded failure")
+                 (assert-equal #:expect #f
+                               #:got (assq-ref (car (repair-candidates failed))
+                                               'success)
+                               #:name "which repair forgets")))))
+
+;;; ---------------------------------------------------------------------------
+;;; Rolling back
+;;; ---------------------------------------------------------------------------
+
+;; The files are never read: the planner is handed a `read-file' that answers
+;; with the directive text a case is about, so the planning can be tested
+;; without a migration directory on disk.
+(define rollback-files
+  (list (migration-file "/m/2026-01-01_a.sql")
+        (migration-file "/m/2026-01-02_b.sql")
+        (migration-file "/m/2026-01-02_b.undo.sql")
+        (migration-file "/m/2026-01-03_c.sql")
+        (migration-file "/m/2026-01-03_c.undo.sql")))
+
+(define (no-directive path) "")
+
+(define (rollback-history)
+  (list (entry "2026-01-01_a.sql" "a")
+        (entry "2026-01-02_b.sql" "b")
+        (entry "2026-01-03_c.sql" "c")))
+
+(define rollback-suite
+  (suite "rolling back what can be rolled back"
+         #:concurrent? #f
+         (test "one migration is undone by default, and it is the newest"
+               #:shuffle? #f
+               (let ((plan (rollback-plan rollback-files (rollback-history)
+                                          #:read-file no-directive)))
+                 (assert-length #:expect 1 #:got plan
+                                #:name "the safe default is one step")
+                 (assert-equal #:expect "2026-01-03_c.sql"
+                               #:got (assq-ref (car plan) 'name)
+                               #:name "the newest applied migration")
+                 (assert-equal #:expect 'undo
+                               #:got (assq-ref (car plan) 'action)
+                               #:name "with the undo script beside it")
+                 (assert-equal #:expect "2026-01-03_c.undo.sql"
+                               #:got (migration-name (assq-ref (car plan) 'undo))
+                               #:name "which is the file the runner would apply")))
+         (test "a requested number of steps reports what blocks it"
+               #:shuffle? #f
+               ;; `a' has no undo script, so a request for three is not silently
+               ;; turned into two: the caller refuses before anything runs.
+               (let ((plan (rollback-plan rollback-files (rollback-history)
+                                          #:steps 3 #:read-file no-directive)))
+                 (assert-equal #:expect '(undo undo blocked)
+                               #:got (map (lambda (e) (assq-ref e 'action)) plan)
+                               #:name "the two that can, and the one that cannot")
+                 (assert-equal #:expect "no undo script"
+                               #:got (assq-ref (caddr plan) 'reason)
+                               #:name "and why the last one is blocked")))
+         (test "--all stops at the first migration it cannot undo"
+               #:shuffle? #f
+               ;; The smart boundary: do the reversible suffix, name the wall.
+               (let ((plan (rollback-plan rollback-files (rollback-history)
+                                          #:all? #t #:read-file no-directive)))
+                 (assert-equal #:expect '(undo undo boundary)
+                               #:got (map (lambda (e) (assq-ref e 'action)) plan)
+                               #:name "newest first, then the boundary")
+                 (assert-equal #:expect "2026-01-01_a.sql"
+                               #:got (assq-ref (caddr plan) 'name)
+                               #:name "which is the migration without a script")))
+         (test "--all with nothing reversible is a boundary alone"
+               #:shuffle? #f
+               (let ((plan (rollback-plan rollback-files
+                                          (list (entry "2026-01-01_a.sql" "a"))
+                                          #:all? #t #:read-file no-directive)))
+                 (assert-length #:expect 1 #:got plan)
+                 (assert-equal #:expect 'boundary
+                               #:got (assq-ref (car plan) 'action)
+                               #:name "the newest migration is the wall")))
+         (test "--to leaves the target applied and undoes what is above it"
+               #:shuffle? #f
+               (let ((plan (rollback-plan rollback-files (rollback-history)
+                                          #:to-version "2026-01-01_a"
+                                          #:read-file no-directive)))
+                 (assert-equal #:expect '("2026-01-03_c.sql" "2026-01-02_b.sql")
+                               #:got (map (lambda (e) (assq-ref e 'name)) plan)
+                               #:name "newest first, target excluded"))
+               (assert-length
+                #:expect 0
+                #:got (rollback-plan rollback-files (rollback-history)
+                                     #:to-version "2026-01-03_c"
+                                     #:read-file no-directive)
+                #:name "a target that is already the newest undoes nothing")
+               (assert-equal
+                #:expect #t
+                #:got (mentions? (error-message
+                                  (lambda ()
+                                    (rollback-plan rollback-files
+                                                   (rollback-history)
+                                                   #:to-version "1999-01-01"
+                                                   #:read-file no-directive)))
+                                 (list "--to 1999-01-01" "not an applied"))
+                #:name "and a target that was never applied is refused"))
+         (test "more steps than there are migrations is refused"
+               #:shuffle? #f
+               (assert-equal #:expect #t
+                             #:got (mentions? (error-message
+                                               (lambda ()
+                                                 (rollback-plan
+                                                  rollback-files (rollback-history)
+                                                  #:steps 9
+                                                  #:read-file no-directive)))
+                                              (list "--steps 9" "more migrations"))
+                             #:name "rather than quietly undoing fewer"))
+         (test "a file marked irreversible is blocked, until it is not"
+               #:shuffle? #f
+               (let* ((files (list (migration-file "/m/2026-01-03_c.sql")
+                                   (migration-file "/m/2026-01-03_c.undo.sql")))
+                      (history (list (entry "2026-01-03_c.sql" "c")))
+                      (marked (lambda (path)
+                                (if (string-contains path "2026-01-03_c.sql")
+                                    "-- mutastructura: irreversible\nCREATE TABLE c (id INTEGER);\n"
+                                    "")))
+                      (blocked (rollback-plan files history #:read-file marked))
+                      (allowed (rollback-plan files history
+                                              #:allow-irreversible? #t
+                                              #:read-file marked)))
+                 (assert-equal #:expect 'blocked
+                               #:got (assq-ref (car blocked) 'action)
+                               #:name "the directive stops the default")
+                 (assert-equal #:expect "marked irreversible"
+                               #:got (assq-ref (car blocked) 'reason)
+                               #:name "and says why")
+                 (assert-equal #:expect 'undo
+                               #:got (assq-ref (car allowed) 'action)
+                               #:name "while the explicit override runs it")))
+         (test "a recorded failure blocks its own rollback"
+               #:shuffle? #f
+               ;; The undo script may be fine, but the ledger is not: repair is
+               ;; the command for that state, not rollback.
+               (let* ((history (list (list (cons 'name "2026-01-03_c.sql")
+                                           (cons 'checksum "c")
+                                           (cons 'kind 'versioned)
+                                           (cons 'success 0))))
+                      (plan (rollback-plan rollback-files history
+                                           #:read-file no-directive)))
+                 (assert-equal #:expect 'blocked
+                               #:got (assq-ref (car plan) 'action))
+                 (assert-equal #:expect "records a failure; run repair first"
+                               #:got (assq-ref (car plan) 'reason))))
+         (test "repeatable migrations are not rollback candidates"
+               #:shuffle? #f
+               ;; They are re-run by `migrate' when their contents change, so
+               ;; rolling back a database that holds only repeatables is a no-op.
+               (let ((history (list (list (cons 'name
+                                                "2026-01-01_seed.repeatable.sql")
+                                          (cons 'checksum "x")
+                                          (cons 'kind 'repeatable)
+                                          (cons 'success 1)))))
+                 (assert-length #:expect 0
+                                #:got (rollback-plan rollback-files history
+                                                     #:read-file no-directive)
+                                #:name "a repeatable is left for migrate to re-run")
+                 (assert-length #:expect 0
+                                #:got (rollback-plan rollback-files '()
+                                                     #:read-file no-directive)
+                                #:name "and an empty database has nothing to undo")))
+         (test "--all is not combined with --steps or --to"
+               #:shuffle? #f
+               (assert-equal #:expect #t
+                             #:got (mentions? (error-message
+                                               (lambda ()
+                                                 (rollback-plan
+                                                  rollback-files (rollback-history)
+                                                  #:all? #t #:steps 1
+                                                  #:read-file no-directive)))
+                                              (list "--all" "cannot be combined"))
+                             #:name "the alternatives are named"))))
 
 (define (spec)
   (veritas-run #:concurrent? #f
@@ -703,4 +905,5 @@
                migration-suite
                placeholder-suite
                ledger-suite
-               planning-suite))
+               planning-suite
+               rollback-suite))

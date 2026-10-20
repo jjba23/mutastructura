@@ -150,6 +150,10 @@
             plan-migrations
             plan-problems
             plan-applicable
+            repair-candidates
+            rollback-candidates
+            rollback-plan
+            migration-irreversible?
             plan-summary
             unapplied-migrations
             pending-files
@@ -1149,6 +1153,167 @@ on that day."
   (filter (lambda (entry)
             (eq? (assq-ref entry 'action) 'apply))
           plan))
+
+(define (repair-candidates plan)
+  "The plan entries `repair' would act on.
+
+Two things bring a ledger and its files back into agreement: a row that
+records a failure (so the migration is attempted again rather than silently
+skipped), and a row whose checksum no longer matches the file it names (which
+is knowingly accepting the file as it now stands)."
+  (filter (lambda (entry)
+            (or (not (assq-ref entry 'success))
+                (eq? (assq-ref entry 'state) 'changed)))
+          plan))
+
+;;; ---------------------------------------------------------------------------
+;;; Rolling back
+;;; ---------------------------------------------------------------------------
+
+;; A rollback is a forward migration's undo script, run in reverse order.  What
+;; makes it smart is what it does about the migrations that cannot be reversed:
+;; a requested number of steps or a requested target is refused outright rather
+;; than leaving a later migration applied on top of an undone earlier one, and
+;; `--all' walks back only as far as the newest run of rollback-able migrations,
+;; naming the one that stopped it.
+
+(define* (migration-irreversible? path #:optional (read-file read-migration-text))
+  "Whether the migration at PATH says, in a comment, not to be rolled back.
+
+The directive is a line beginning `-- mutastructura: irreversible' (or
+`-- +mutastructura irreversible').  A data migration may have perfectly good
+undo SQL and still be a change nobody wants reversed automatically; this is how
+its author says so."
+  (and path
+       (catch #t
+         (lambda ()
+           (any (lambda (line)
+                  (let ((line (string-downcase (trim-whitespace line))))
+                    (or (string-prefix? "-- mutastructura: irreversible" line)
+                        (string-prefix? "-- +mutastructura irreversible" line))))
+                (string-split (read-file path) #\newline)))
+         (lambda _ #f))))
+
+(define* (rollback-candidates files history #:key (read-file read-migration-text))
+  "The applied versioned migrations, newest first, with the files that undo them.
+
+Each entry carries its `name', its `version', the forward `file' when that is
+still on disk, the `undo' file when there is one, whether the file is marked
+`irreversible', and what the ledger recorded about it.  Repeatable migrations
+are not candidates: `migrate' re-runs them when their contents change, so a
+rollback leaves them alone."
+  (reverse
+   (filter-map
+    (lambda (entry)
+      (and (eq? (history-entry-kind entry) 'versioned)
+           (let* ((name (history-entry-name entry))
+                  (version (basename-without-extension name))
+                  (forward (find (lambda (file)
+                                   (and (not (eq? (migration-kind file) 'undo))
+                                        (equal? (migration-version file) version)))
+                                 files))
+                  (undo (find (lambda (file)
+                                (and (eq? (migration-kind file) 'undo)
+                                     (equal? (migration-version file) version)))
+                              files)))
+             (list (cons 'name name)
+                   (cons 'version version)
+                   (cons 'file forward)
+                   (cons 'undo undo)
+                   (cons 'irreversible
+                         (and forward
+                              (migration-irreversible?
+                               (migration-path forward) read-file)
+                              #t))
+                   (cons 'success (history-entry-success entry))
+                   (cons 'applied-on (history-entry-installed-on entry))))))
+    history)))
+
+(define (rollback-entry-state entry allow-irreversible?)
+  "ENTRY with the action a rollback would take on it, and the reason.
+
+`blocked' is a migration that cannot be reversed: it records a failure, its
+author marked it irreversible, or there is no undo script beside it.  `undo' is
+one that can.  A blocked entry is reported before anything runs, never skipped."
+  (append entry
+          (cond
+            ((not (assq-ref entry 'success))
+             (list (cons 'action 'blocked)
+                   (cons 'reason "records a failure; run repair first")))
+            ((and (assq-ref entry 'irreversible) (not allow-irreversible?))
+             (list (cons 'action 'blocked)
+                   (cons 'reason "marked irreversible")))
+            ((not (assq-ref entry 'undo))
+             (list (cons 'action 'blocked)
+                   (cons 'reason "no undo script")))
+            (else (list (cons 'action 'undo)
+                        (cons 'reason "undo script"))))))
+
+(define* (rollback-plan files history #:key (steps #f) (to-version #f)
+                        (all? #f) (allow-irreversible? #f)
+                        (read-file read-migration-text))
+  "The rollback a command would run, newest first.
+
+Three selections are possible, and they are alternatives:
+
+@example
+--steps N      undo the N newest applied migrations
+--to VERSION   undo everything applied after VERSION, leaving it applied
+--all          undo as far back as undo scripts allow
+@end example
+
+Without one of them, one migration is undone, which is the safe default.
+`--all' stops at the first migration that cannot be reversed and returns it as a
+`boundary' entry; the other selections return their entries as `undo' or
+`blocked', and the caller refuses the whole rollback when anything is blocked.
+An empty list means the target is already the newest applied migration."
+  (when (and all? (or steps to-version))
+    (raise-exception
+     (make-exception-with-message
+      "--all cannot be combined with --steps or --to")))
+  (when (and steps to-version)
+    (raise-exception
+     (make-exception-with-message
+      "--steps and --to are alternatives; give one of them")))
+  (let* ((applied (rollback-candidates files history #:read-file read-file)))
+    (define (select n)
+      (map (lambda (entry)
+             (rollback-entry-state entry allow-irreversible?))
+           (take applied n)))
+    (cond
+      ((null? applied) '())
+      (to-version
+       (let loop ((rest applied) (n 0))
+         (cond
+           ((null? rest)
+            (raise-exception
+             (make-exception-with-message
+              (format #f "--to ~a is not an applied versioned migration"
+                      to-version))))
+           ((equal? (assq-ref (car rest) 'version) to-version) (select n))
+           (else (loop (cdr rest) (+ n 1))))))
+      (all?
+       (let loop ((rest applied) (acc '()))
+         (if (null? rest)
+             (reverse acc)
+             (let ((entry (rollback-entry-state (car rest)
+                                                allow-irreversible?)))
+               (if (eq? (assq-ref entry 'action) 'undo)
+                   (loop (cdr rest) (cons entry acc))
+                   (reverse
+                    (cons (cons (cons 'action 'boundary)
+                                (filter (lambda (pair)
+                                          (not (eq? (car pair) 'action)))
+                                        entry))
+                          acc)))))))
+      (else
+       (let ((n (or steps 1)))
+         (when (> n (length applied))
+           (raise-exception
+            (make-exception-with-message
+             (format #f "--steps ~a asks for more migrations than are applied (~a)"
+                     n (length applied)))))
+         (select n))))))
 
 (define (plan-summary plan)
   "Count the plan by state, as an alist, for the summary line."

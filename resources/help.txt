@@ -17,6 +17,23 @@ COMMANDS:
         adds up to, and the problems it found (a file changed after it was
         applied, a ledger entry whose file has gone). Opens a session that
         writes nothing, so it is safe against a production database.
+    validate
+        The same plan as status, but exit 1 when the ledger and the migration
+        files disagree. Made for CI, where a report nobody reads is not enough.
+    rollback
+        Undo applied migrations, newest first, using their *.undo.sql scripts.
+        With no selection one migration is undone; --steps N undoes N, --to
+        VERSION undoes everything above VERSION, and --all walks back as far as
+        undo scripts allow, stopping and naming the migration that has none.
+        A migration without an undo script, or one marked irreversible with
+        -- mutastructura: irreversible, blocks the rollback rather than being
+        skipped. --allow-irreversible overrides the directive. With --dry-run
+        it reports the undo statements and changes nothing.
+    repair
+        Bring the ledger back into agreement with the files: forget a row that
+        records a failure, and realign the checksum of a file that changed
+        after it was applied. With --dry-run it names the rows and writes
+        nothing. A checksum realigned by repair is knowingly accepted as is.
     clean
         Drop everything in the current schema, the ledger included. With
         --dry-run it names what it would drop and drops nothing.
@@ -48,6 +65,28 @@ OPTIONS:
         pairs with commas (--placeholder a=1,b=2). A ${...} nobody defined is
         left exactly as it was, so a migration may carry its own template
         syntax in a comment.
+    --target VERSION
+        Stop at VERSION: the migration whose version is VERSION runs, and so
+        does everything below it; anything above is reported as beyond-target.
+        A date may be used as a prefix (--target 2026-04-01 covers that day).
+    --out-of-order
+        Apply a pending migration older than the newest one already applied.
+        Such a migration is held back by default, because running it on top of
+        a newer schema is how a deploy breaks in a subtle way.
+    --to VERSION
+        (rollback) Undo everything applied above VERSION and leave VERSION
+        applied. Refused as a whole when any migration in that range cannot be
+        undone, because skipping one would undo an earlier schema underneath a
+        later migration that expects it.
+    --steps N
+        (rollback) Undo the N newest applied migrations. Refused as a whole for
+        the same reason as --to.
+    --all
+        (rollback) Undo as far back as undo scripts allow: the newest run of
+        rollback-able migrations, then stop and name the one that blocked it.
+    --allow-irreversible
+        (rollback) Undo a migration whose author marked it irreversible with
+        the directive comment -- mutastructura: irreversible.
     --dry-run
         Read the plan and the statements of every migration that would run, and
         change nothing: no statement is sent, no ledger row is written, and the

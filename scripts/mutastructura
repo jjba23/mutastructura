@@ -73,7 +73,7 @@ show_help() {
 command_name="migrate"
 
 case "${1:-}" in
-  migrate | status | clean)
+  migrate | status | validate | rollback | repair | clean)
     command_name="${1}"
     shift
     ;;
@@ -92,7 +92,7 @@ case "${1:-}" in
 esac
 
 parsed_options=$(getopt -n "mutastructura" -o m:d:c:r:hv \
-  --long migrations:,database:,connection:,resources:,placeholder:,help,dry-run,verbose \
+  --long migrations:,database:,connection:,resources:,placeholder:,target:,to:,steps:,help,dry-run,out-of-order,all,allow-irreversible,verbose \
   -- "$@")
 
 eval set -- "${parsed_options}"
@@ -135,6 +135,30 @@ while true; do
     # side reads, comma-separated, which is the form its parser already knows.
     placeholder_args+=("${2}")
     shift 2
+    ;;
+  --target)
+    guile_cmd_args+=("--target" "${2}")
+    shift 2
+    ;;
+  --out-of-order)
+    guile_cmd_args+=("--out-of-order")
+    shift
+    ;;
+  --to)
+    guile_cmd_args+=("--to" "${2}")
+    shift 2
+    ;;
+  --steps)
+    guile_cmd_args+=("--steps" "${2}")
+    shift 2
+    ;;
+  --all)
+    guile_cmd_args+=("--all")
+    shift
+    ;;
+  --allow-irreversible)
+    guile_cmd_args+=("--allow-irreversible")
+    shift
     ;;
   --dry-run)
     guile_cmd_args+=("--dry-run")

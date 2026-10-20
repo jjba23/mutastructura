@@ -37,6 +37,9 @@ Mutastructura provides a declarative, transactional approach to managing your da
 - If a migration fails, the legion retreats (~ROLLBACK~), ensuring your database is never left in a corrupted, half-migrated state -- and on MySQL, which commits DDL as it runs, mutastructura says plainly that what ran stands and records no success for it.
 - Intelligent Parsing with a finite-state-machine-based SQL lexer (~string-split-to-queries~).
 - Computes ~SHA256~ checksums of your migration files and tracks them in a ~migrations_history~ table, ensuring your schema evolution is strictly linear and tamper-evident.
+- ~validate~ turns "a file changed after it was applied" into a failing exit status for CI, and ~repair~ is the deliberate way to accept the change or forget a recorded failure.
+- ~rollback~ undoes migrations newest-first through paired ~*.undo.sql~ scripts, refuses a range that contains irreversible work, and stops cleanly at the first migration it cannot reverse.
+- ~--target~ stops a run at a version and ~--out-of-order~ decides whether an older pending migration may still run, like Flyway's ~target~ and ~outOfOrder~.
 
 -----------------
 
@@ -121,23 +124,35 @@ mutastructura --help
 
 ** Commands
 
-Three commands, and the first word on the command line says which. No word at all means ~migrate~, which is what this program did when migrating was all it did.
+Six commands, and the first word on the command line says which. No word at all means ~migrate~, which is what this program did when migrating was all it did.
 
 #+begin_src shell
-mutastructura migrate -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
-mutastructura status  -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
-mutastructura clean   -c ./lucidplan-test.sqlite -d sqlite3
+mutastructura migrate  -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
+mutastructura status   -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
+mutastructura validate -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
+mutastructura rollback -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3 --steps 1
+mutastructura repair   -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
+mutastructura clean    -c ./lucidplan-test.sqlite -d sqlite3
 #+end_src
 
 - *migrate* (the default) :: applies what is pending, in order, recording each one in the ledger. The whole run is one transaction where the engine can undo DDL; where it cannot (MySQL commits DDL as it runs) the message says so rather than pretending.
 - *status* :: the same plan, reported and not run. Every migration's state, what the plan adds up to, and the problems it found -- a file changed after it was applied, a ledger entry whose file has gone. It opens a session that writes nothing at all, so it is safe to point at a database in production; the ledger is not even created if it is missing.
+- *validate* :: the same report as *status*, but exit ~1~ when the ledger and the files disagree. A report nobody reads is not a CI gate; this is.
+- *rollback* :: undoes applied migrations, newest first, with their paired ~*.undo.sql~ scripts. It refuses a range that contains a migration it cannot reverse, and ~--all~ stops at that boundary instead. See *Rolling back* below.
+- *repair* :: brings the ledger back into agreement with the files. A row that records a failure is forgotten, so the migration is attempted again; a migration whose file changed after it was applied has its checksum realigned, which is knowingly accepting the file as it now stands. With ~--dry-run~ it names the rows it would touch and writes nothing.
 - *clean* :: drops everything the catalogue reports in the current schema, the ledger included. With ~--dry-run~ it names what it would drop and drops nothing.
 - *help* :: prints the bundled ~resources/help.txt~, as ~--help~ / ~-h~ does.
 
 ** The flags that reach further into a run
 
 - ~--placeholder key=value~ :: substitutes ~${key}~ in every migration read during this run. Repeat the option (~--placeholder a=1 --placeholder b=2~) or put the pairs in one comma-separated value (~--placeholder a=1,b=2~). A ~${...}~ nobody defined is left exactly as it was, so a migration may carry template syntax of its own inside a comment. This is how a schema name, a tablespace or a role differs between deployments without forking the migrations.
-- ~--dry-run~ :: reads the plan and every statement of every migration that would run, and changes nothing: no statement is sent, no ledger row is written, and the ledger is not created if it is missing. With ~clean~ it reports the drops instead of performing them.
+- ~--target VERSION~ :: stops at ~VERSION~, exactly like Flyway's ~target~: the migration with that version runs, everything below it runs, and anything above it is reported as ~beyond-target~. A date may be a prefix, so ~--target 2026-04-01~ covers that whole day.
+- ~--out-of-order~ :: applies a pending migration older than the newest one already applied. Such a migration is held back by default, because applying it on top of a newer schema is how a deploy breaks in a subtle way.
+- ~--to VERSION~ :: (rollback) undoes everything applied above ~VERSION~ and leaves ~VERSION~ applied. The rollback is refused as a whole if any migration in that range cannot be undone.
+- ~--steps N~ :: (rollback) undoes the ~N~ newest applied migrations, also refusing the whole range if one of them cannot be undone.
+- ~--all~ :: (rollback) undoes the newest contiguous run of rollback-able migrations, then stops and names the migration that blocked it.
+- ~--allow-irreversible~ :: (rollback) undoes a migration whose author marked it irreversible with the ~-- mutastructura: irreversible~ directive.
+- ~--dry-run~ :: reads the plan and every statement of every migration that would run, and changes nothing: no statement is sent, no ledger row is written, and the ledger is not created if it is missing. With ~clean~ it reports the drops instead of performing them; with ~repair~ it names the rows it would fix; with ~rollback~ it shows the undo statements and forgets nothing.
 - ~-v~ / ~--verbose~ :: shows each statement in full -- multi-line bodies and delimiters included -- instead of its first line.
 
 #+begin_src shell
@@ -154,6 +169,44 @@ mutastructura clean -c mysql://alice:secret@127.0.0.1:3306/appdb -d mysql --dry-
 mutastructura clean -c mysql://alice:secret@127.0.0.1:3306/appdb -d mysql
 #+end_src
 
+** Rolling back
+
+~rollback~ undoes applied migrations, newest first. The undo of a migration is a
+file beside it with the same name and ~.undo.sql~ instead of ~.sql~:
+~2026-04-01_21:54:00_add-user.sql~ pairs with
+~2026-04-01_21:54:00_add-user.undo.sql~. The ledger row is forgotten only after
+the undo script succeeds, so the next ~migrate~ applies the migration again.
+
+Not every migration can or should be reversed, and rollback does not pretend
+otherwise:
+
+- a migration with no undo script blocks the rollback;
+- a migration whose author wrote the directive ~-- mutastructura: irreversible~
+  blocks it even when an undo script exists (override deliberately with
+  ~--allow-irreversible~);
+- a ledger row that records a failure blocks it too; ~repair~ is the command for
+  that state.
+
+With no selection one migration is undone. ~--steps N~ undoes ~N~ and ~--to
+VERSION~ undoes everything applied above ~VERSION~, leaving it applied. Both are
+all-or-nothing: if anything in the range is blocked, nothing runs and the
+offending migrations are named. ~--all~ is the smart one: it undoes the newest
+contiguous run of rollback-able migrations, stops and names the migration that
+blocked it, and exits ~0~ for the work it did.
+
+#+begin_src shell
+mutastructura rollback -m ./migrations -c ./app.db -d sqlite3
+mutastructura rollback -m ./migrations -c ./app.db -d sqlite3 --steps 2
+mutastructura rollback -m ./migrations -c ./app.db -d sqlite3 --to 2026-04-01
+mutastructura rollback -m ./migrations -c ./app.db -d sqlite3 --all --dry-run
+#+end_src
+
+Repeatable migrations are not rolled back: ~migrate~ re-runs them when their
+contents change. With no versioned migration applied, ~rollback~ says so and
+exits ~0~. The whole rollback is one transaction where the engine has
+transactional DDL; on MySQL, where it does not, the message says plainly that
+the undo statements that ran stand.
+
 Run easily and reproducibly with Maak + Guix, or use directly Guile, or load a REPL (like Arei)
 
 #+BEGIN_SRC sh
@@ -169,13 +222,21 @@ guix time-machine --channels=channels.scm -- \
 ** Argument Details
 - ~-d~ / ~--database~ :: The engine you are targeting: ~sqlite3~, ~postgresql~, ~cockroachdb~, ~mysql~ (or ~mariadb~), plus the aliases each one accepts (~pg~, ~psql~, ~crdb~, ~percona~, ~timescaledb~, ~yugabyte~...).
 - ~-c~ / ~--connection~ :: A URL, or the driver's own connection string. A URL is ~sqlite3:///var/lib/app.db~, ~postgresql://user:pass@host:5432/appdb~ or ~mysql://user:pass@host:3306/appdb~; anything else is passed through as the engine's connection string.
-- ~-m~ / ~--migrations~ :: The path to your migrations directory: ~*.sql~ files. Read by ~migrate~ and ~status~; ~clean~ never looks at it.
+- ~-m~ / ~--migrations~ :: The path to your migrations directory: ~*.sql~ files and their ~*.undo.sql~ counterparts. Read by ~migrate~, ~status~, ~validate~, ~rollback~ and ~repair~; ~clean~ never looks at it.
 - ~--placeholder~ :: ~key=value~, repeatable (or comma-separated), substituting ~${key}~ in every migration read during this run.
-- ~--dry-run~ :: report what would run (or, for ~clean~, what would be dropped) and change nothing.
+- ~--target~ :: the version to stop at; see the flyway-like ~target~ above.
+- ~--out-of-order~ :: allow a migration older than the newest applied one to run.
+- ~--to~ / ~--steps~ / ~--all~ :: the three ways to select how far ~rollback~ goes; they are alternatives.
+- ~--allow-irreversible~ :: let ~rollback~ run a migration marked irreversible by its author.
+- ~--dry-run~ :: report what would run (or, for ~clean~, what would be dropped; for ~repair~, what rows would change; for ~rollback~, which undo statements would run) and change nothing.
 - ~-v~ / ~--verbose~ :: each statement in full, instead of its first line.
 - ~-r~ / ~--resources~ :: (optional) Path to internal application resources (used for development and installation, bundled from ./resources dir).
 
-Every command exits ~0~ when it did what it was asked to do and ~1~ when it could not -- a migration that failed, a connection that was refused, an option that was missing, a URL that named an engine other than ~--database~. The failure is reported as one line beginning ~[error]~.
+Every command exits ~0~ when it did what it was asked to do and ~1~ when it could not -- a migration that failed, a connection that was refused, an option that was missing, a URL that named an engine other than ~--database~, a ~validate~ that found a ledger and its files disagreeing, or a ~rollback~ whose requested range contains a migration that cannot be undone. The failure is reported as one line beginning ~[error]~. ~rollback --all~ exits ~0~ when it undid everything reversible and stopped at a named boundary.
+
+** Roadmap
+
+See [[file:ROADMAP.org][ROADMAP.org]] for how mutastructura compares with Alembic, Django, Flyway, Liquibase and yoyo, and for the features planned next -- baselining, hooks and offline SQL generation among them.
 
 ----------------
 
