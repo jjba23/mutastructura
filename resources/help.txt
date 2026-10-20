@@ -55,10 +55,10 @@ OPTIONS:
         Anything else is taken as the engine's connection string, which is
         guile-dbi's own user:pass:db:tcp:host:port form.
     -m, --migrations
-        The path to your migrations directory: *.sql files. A file named
-        *.repeatable.sql runs again whenever its contents change; the rest
-        run once, in order.
-        Read by migrate and status; clean does not need it.
+        The path to your migrations directory: *.sql files and their
+        *.undo.sql counterparts. A file named *.repeatable.sql runs again
+        whenever its contents change; the rest run once, in order.
+        Read by every command except clean.
     --placeholder key=value
         Substitute ${key} with value in every migration read during this run.
         Repeat the option (--placeholder a=1 --placeholder b=2) or separate the
@@ -90,8 +90,9 @@ OPTIONS:
     --dry-run
         Read the plan and the statements of every migration that would run, and
         change nothing: no statement is sent, no ledger row is written, and the
-        ledger is not created if it is missing. With clean it reports the drops
-        instead of performing them.
+        ledger is not created if it is missing. With clean it reports the drops,
+        with repair the rows it would fix, and with rollback the undo
+        statements it would run.
     -v, --verbose
         Show each statement in full -- multi-line bodies included -- instead of
         the first line of it. Without this, a run reports its summary and one
@@ -101,8 +102,11 @@ OPTIONS:
         bundled from ./resources dir
 
 EXIT STATUS:
-    0   the command did what it was asked to do.
+    0   the command did what it was asked to do (and rollback --all, which
+        exits 0 when it undid everything reversible and stopped at a boundary).
     1   it could not: a migration failed, a connection was refused, an option
-        was missing or a URL named an engine other than --database.
+        was missing, a URL named an engine other than --database, validate
+        found a disagreement, or a rollback range held a migration that cannot
+        be undone.
 
 +----------------------------------------------------------------------------+

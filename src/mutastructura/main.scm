@@ -375,12 +375,18 @@ the engine's own connection string, which is what guile-dbi's
                (apply throw key args))))
   (log-migrations-successful))
 
+(define (milliseconds-since started)
+  "Whole milliseconds elapsed since STARTED, a `gettimeofday' pair."
+  (let ((now (gettimeofday)))
+    (+ (* 1000 (- (car now) (car started)))
+       (quotient (- (cdr now) (cdr started)) 1000))))
+
 (define (run-one runner session migration options)
   "Run MIGRATION in SESSION and record what happened in the ledger."
   (let* ((path (migration-path migration))
          (started (gettimeofday))
          (statements ((runner-apply! runner) session migration options))
-         (elapsed (- (car (gettimeofday)) (car started)))
+         (elapsed (milliseconds-since started))
          (checksum (or (assq-ref migration 'checksum)
                        (migration-checksum path))))
     ((runner-record! runner)

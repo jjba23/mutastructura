@@ -1,198 +1,341 @@
 #+TITLE: MUTASTRUCTURA
+#+SUBTITLE: Schema migrations, powered by Lisp
 #+AUTHOR: Josep Jesus Bigorra Algaba
 #+EMAIL: jjbigorra@gmail.com
 #+LANGUAGE: en
-#+OPTIONS: num:nil toc:nil
+#+OPTIONS: toc:nil num:nil
+#+STARTUP: overview
 
-[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]   [[https://jointhefreeworld.org/ggg/dist/maak.svg]]
-[[https://jointhefreeworld.org/ggg/dist/license-agpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
+[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/sqlite.svg]] [[https://jointhefreeworld.org/ggg/dist/postgresql.svg]] [[https://jointhefreeworld.org/ggg/dist/mysql.svg]] [[https://jointhefreeworld.org/ggg/dist/license-agpl3+.svg]] [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]] [[https://jointhefreeworld.org/ggg/dist/codeberg.svg]]
+
+#+begin_quote
+*Your schema, exactly as you decree -- incrementally.*
+
+Mutastructura runs plain SQL migrations against SQLite3, PostgreSQL,
+CockroachDB and MySQL/MariaDB. It keeps a checksummed ledger of what ran, and
+gives you the commands you actually need: ~migrate~, ~status~, ~validate~,
+~rollback~, ~repair~ and ~clean~ -- all in Guile Scheme.
+
+No ORM. No model layer. No daemon. Just SQL, a ledger, and honest answers.
+#+end_quote
 
 
-/Schema Migrations Powered by Lisp/
+* See it in action
 
-#+begin_src
- 🏛️  M U T A S T R U C T U R A  🏛️
+#+CAPTION: A real SQLite session: plan, migrate, validate, roll back one step, walk back as far as undo scripts allow, then refuse honestly at a migration that has none.
+#+ATTR_HTML: :width 100% :alt Animated terminal demo of mutastructura running status, migrate, validate and rollback.
+[[file:assets/mutastructura-demo.gif]]
 
- _ _ V E N I • V I D I • L I S P _ _
-#+end_src
+Prefer a still? [[file:assets/demo-poster.png][Open the poster image]].
 
 * Overview (PROLOGUS)
 
-This tool ensures your relational schema and database state is exactly as you decree, incrementally.
+Mutastructura is a schema migration tool for people who already know SQL and
+would like to keep it that way.
 
-Compatible with SQLite3, MySQL/MariaDB, PostgreSQL (and its compatibles: CockroachDB, YugabyteDB, TimescaleDB). Write your schema migrations and seeding easily, and in your native database dialect.
+You write a directory of ~.sql~ files. Mutastructura works out what is pending,
+runs it in order, records each migration with its SHA-256 checksum, and reports
+precisely what changed. When something is wrong -- a file edited after it was
+applied, a migration whose file has vanished, a rollback with no undo script --
+it says so instead of guessing.
 
------------------
+#+begin_quote
+This tool ensures your relational schema and database state is exactly as you
+decree, incrementally.
+#+end_quote
+
+It is compatible with *SQLite3*, *MySQL/MariaDB*, *PostgreSQL* and its
+compatible databases (*CockroachDB*, *YugabyteDB*, *TimescaleDB*, Citus and
+Aurora PostgreSQL). Write your migrations in your native database dialect.
+
+** The name
+
+Mutastructura is *mutare* (to change) and *structura* (structure): the changed
+structure, or the act of changing it. The motto is the house style -- come, see,
+and write it in Lisp. The name is long because Latin is; the tool is small on
+purpose.
+
+
+#+begin_example
+  🏛️  M U T A S T R U C T U R A  🏛️
+     VENI • VIDI • LISP
+#+end_example
+
+** Who is it for?
+
+- *SQL-first teams* who want the useful parts of Flyway's model -- versioned
+  files, repeatables, checksums and placeholders -- without a JVM or a
+  changelog format.
+- *Guile and Guix people* who would like their migration tool to be a library
+  they can read, extend and reason about, not a black box.
+- *Small services and side projects* where one command, one migration
+  directory and one history table are the right amount of machinery.
+- *CI pipelines* that need ~validate~ to fail the build and ~rollback~ to be
+  deliberate rather than a wildcard.
+
+** Design principles
+
+- *SQL is the source of truth.* Mutastructura never generates schema changes
+  from a model; you write the SQL your database actually understands.
+- *The ledger is the record.* Every applied migration has a checksum, a kind, a
+  timestamp and a success flag. That is what ~status~, ~validate~ and ~repair~
+  read.
+- *Refuse rather than guess.* A rollback that would leave a later migration
+  applied on top of an undone earlier one is not performed; the blocker is
+  named. A checksum is never silently accepted; ~repair~ is the deliberate act.
+- *A functional core, an imperative shell.* Planning is pure and unit-tested;
+  only the CLI and the runner touch a database.
+- *Reproducible by construction.* The development environment, the package and
+  the container are all declared in Guix.
 
 * Features (VIRTUTES)
 
-Mutastructura provides a declarative, transactional approach to managing your database states:
+- *Six focused commands* (plus ~help~): ~migrate~, ~status~, ~validate~,
+  ~rollback~, ~repair~ and ~clean~. Each is the same plan read in a different
+  way.
+- *Native DBI support* for ~sqlite3~, ~postgresql~ and ~mysql~, with aliases for
+  the databases that speak those protocols: ~--database mariadb~ is MySQL,
+  ~--database crdb~ is CockroachDB through the PostgreSQL driver, and
+  ~--database timescaledb~, ~yugabyte~ and friends cost nothing extra.
+- *A checksummed ledger* (~migrations_history~) created on first use and read
+  without writing by ~status~ and ~validate~.
+- *~status~ and ~validate~* report every migration's state -- pending, applied,
+  changed, missing, superseded, beyond-target -- and ~validate~ turns a
+  disagreement into exit status 1 for CI.
+- *~rollback~ with a spine.* Undo scripts run newest-first; ~--steps~ and ~--to~
+  refuse a range containing irreversible work, while ~--all~ walks back the
+  newest reversible run and names the boundary. Migrations can declare
+  themselves irreversible in a comment.
+- *~repair~ as a deliberate act.* Forget a recorded failure so the migration is
+  retried, or realign a checksum after accepting an edited file.
+- *~--target~ and ~--out-of-order~* for controlled forward runs, like Flyway's
+  ~target~ and ~outOfOrder~.
+- *Transactional runs* where the engine can undo DDL. On MySQL, which commits DDL
+  implicitly, Mutastructura says plainly that what ran stands rather than
+  pretending a rollback happened.
+- *Repeatable migrations* (~*.repeatable.sql~) rerun whenever their contents
+  change -- the same idea as Flyway's repeatable migrations.
+- *~${key}~ placeholders* for schema names, roles and tablespaces that differ
+  between deployments, without forking the migrations.
+- *A real SQL lexer*, not a split on semicolons. It understands strings,
+  quoted identifiers, nested block comments, PostgreSQL dollar quoting,
+  MySQL's ~DELIMITER~, ~E'...'~ strings and trigger bodies -- the cases where a
+  naive splitter cuts a working migration in half.
+- *A migration lock* that fits each engine: the transaction itself on SQLite,
+  an advisory lock on PostgreSQL and MySQL, and the ledger's unique name key on
+  CockroachDB.
+- *No server process, no telemetry, no daemon.* A small shell launcher around
+  Guile and guile-dbi, and nothing else to keep running.
+- *Reproducible packaging* through GNU Guix, plus a Docker/Podman image for
+  machines that do not speak Guix.
 
-- Written purely in Guile Scheme, bringing functional programming and S-expression elegance to your database migrations.
-- Native ~dbi~ support: ~sqlite3~, ~postgresql~, ~mysql~.
-- One engine registry decides everything: ~--database mariadb~ is MySQL, ~--database crdb~ is CockroachDB through the PostgreSQL driver, and a new compatible engine costs one line to add.
-- Auto-installs the schema management ~migrations_history~ (and does not, for a command that only reads).
-- ~status~ reports the whole plan -- what is pending, what is applied, what changed -- without running anything, and ~clean~ drops what the database has.
-- Every migration is executed within a ~with-transaction~ block and so, transactionally (from ~BEGIN~ to ~COMMIT~ you could say), wherever the engine can undo DDL at all.
-- If a migration fails, the legion retreats (~ROLLBACK~), ensuring your database is never left in a corrupted, half-migrated state -- and on MySQL, which commits DDL as it runs, mutastructura says plainly that what ran stands and records no success for it.
-- Intelligent Parsing with a finite-state-machine-based SQL lexer (~string-split-to-queries~).
-- Computes ~SHA256~ checksums of your migration files and tracks them in a ~migrations_history~ table, ensuring your schema evolution is strictly linear and tamper-evident.
-- ~validate~ turns "a file changed after it was applied" into a failing exit status for CI, and ~repair~ is the deliberate way to accept the change or forget a recorded failure.
-- ~rollback~ undoes migrations newest-first through paired ~*.undo.sql~ scripts, refuses a range that contains irreversible work, and stops cleanly at the first migration it cannot reverse.
-- ~--target~ stops a run at a version and ~--out-of-order~ decides whether an older pending migration may still run, like Flyway's ~target~ and ~outOfOrder~.
+* Requirements (REQUISITA)
 
------------------
+| Requirement             | Why                                                            |
+|-------------------------+----------------------------------------------------------------|
+| A Unix-like system      | The launcher is Bash; Guix runs on GNU/Linux                   |
+| GNU Guix                | Recommended: gives you Guile 3.0, guile-dbi and every driver   |
+| Guile Scheme 3.0+       | The whole program is Guile; no other runtime is needed         |
+| guile-dbi + drivers     | ~guile-dbd-sqlite3~, ~guile-dbd-postgresql~, ~guile-dbd-mysql~ |
+| guile-gcrypt            | SHA-256 checksums of migration files                           |
+| Bash, getopt, coreutils | The installed ~mutastructura~ launcher is a small shell script |
+| A database (optional)   | SQLite needs no server; PostgreSQL and MySQL need one          |
 
-[[https://jointhefreeworld.org/static-assets/mutastructura/mutastructura-small.png]]
+Guix users get all of the Guile requirements from [[file:manifest.scm][manifest.scm]] or
+[[file:guix.scm][guix.scm]]; there is nothing else to install.
 
--------------------
+* Installation (INSTALLATIO)
 
-* Installing
+** With GNU Guix (recommended)
 
-mutastructura is officially distributed via:
-- Guix package manager - as ~mutastructura~ from ~(gnu packages databases)~ - or from the source code here
-- Podman/Docker images.
-
-/That being said, feel free to use it as you wish, within the terms of the GNU Affero General Public License v3 or newer./
-
-** On Guix
-
-Requirements:
-- *Guix*: The Guix package manager will ensure a reproducible working software, and will manage all needed dependencies for you.
--  *Guile Scheme:*  This entire program is written using the official GNU extension language, Guile Scheme.
-
-If you just want to quickly install it to your profile:
+Clone the repository and install the package definition it carries:
 
 #+begin_src shell
-guix package --install-from-file=./guix.scm
+git clone https://codeberg.org/jjba23/mutastructura.git
+cd mutastructura
+guix package --install-from-file=guix.scm
+mutastructura --help
 #+end_src
 
-Check the ~maak.scm~ and the ~guix.scm~ and ~manifest.scm~ for more details.
+If your Guix revision already carries the package -- it lives in
+~(gnu packages databases)~ -- then ~guix install mutastructura~ is enough.
+Otherwise the definition in [[file:guix.scm][guix.scm]] is the authoritative one. The
+[[file:maak.scm][maak.scm]] and [[file:manifest.scm][manifest.scm]] files show how the package and development
+environment are put together.
 
-For example, to enter an environment shell with mutastructura temporarily you can use:
+Want to try it without touching your profile? Enter a shell with the package:
+
 #+begin_src shell
 guix time-machine --channels=channels.scm -- shell -f guix.scm
+mutastructura --help
 #+end_src
 
-You can also chain commands to it:
+Or run one command in a pinned environment:
+
 #+begin_src shell
 guix time-machine --channels=channels.scm -- \
      shell -f guix.scm -- mutastructura \
      --database sqlite3 \
-     --connection ./lucidplan-test.sqlite  \
-     --migrations ./migrations/lucidplan
+     --connection ./app.db \
+     --migrations ./migrations
 #+end_src
 
-You can also run a dev shell (with manifest)
-#+begin_src shell
-guix time-machine --channels=channels.scm -- \
-     shell -m manifest.scm -- guile -L ./src -c '((@(mutastructura main) main))' \
-     --database sqlite3 \
-     --connection ./lucidplan-test.sqlite \
-     --migrations ./migrations/lucidplan \
-     --resources ./resources
-#+end_src
-
-mutastructura offers a ~--help~ / ~-h~ flag which will explain all options (also visible in ~resources/help.txt~). You should point mutastructura to the path to your migrations.
-
-
-** On Podman/Docker
-
-mutastructura is also available as a Docker container, from DockerHub (also compatible with Podman).
-
-https://hub.docker.com/repository/docker/jjba23/mutastructura/general
-
-You can also build images of mutastructura yourself, using ~guix pack~. See the ~maak.scm~ file for more.
-To load these tarball images, you can do ~podman load < my.tar.gz~
-
-You can run mutastructura from the container, and bind your local filesystem to give access, for example:
+For development, use the manifest instead of the package:
 
 #+begin_src shell
- docker container run -v /home/joe:/home/joe \
-     docker.io/jjba23/mutastructura:latest mutastructura --help
+guix time-machine --channels=channels.scm -- shell -m manifest.scm
+guile -L ./src -c '((@(mutastructura main) main))' \
+      --database sqlite3 \
+      --connection ./app.db \
+      --migrations ./migrations \
+      --resources ./resources
 #+end_src
 
+** With Podman or Docker
 
-* Usage (PRAECEPTA)
-
-The project is written mostly in Lisp (Guile Scheme) and uses [[https://codeberg.org/jjba23/maak][Maak, the infinitely extensible command-runner]] as automation system with GNU Guix package manager and build system, making reproducibility and devex first-class concerns, not afterthoughts.
-
-See a quick help page:
-#+begin_src
-mutastructura --help
-#+end_src
-
-** Commands
-
-Six commands, and the first word on the command line says which. No word at all means ~migrate~, which is what this program did when migrating was all it did.
+Mutastructura is published as a container image (compatible with Podman) on
+[[https://hub.docker.com/repository/docker/jjba23/mutastructura/general][Docker Hub]]:
 
 #+begin_src shell
-mutastructura migrate  -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
-mutastructura status   -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
-mutastructura validate -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
-mutastructura rollback -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3 --steps 1
-mutastructura repair   -m ./migrations -c ./lucidplan-test.sqlite -d sqlite3
-mutastructura clean    -c ./lucidplan-test.sqlite -d sqlite3
+podman run --rm -v "$PWD:/work" -w /work \
+    docker.io/jjba23/mutastructura:latest \
+    mutastructura --database sqlite3 \
+    --connection ./app.db --migrations ./migrations
 #+end_src
 
-- *migrate* (the default) :: applies what is pending, in order, recording each one in the ledger. The whole run is one transaction where the engine can undo DDL; where it cannot (MySQL commits DDL as it runs) the message says so rather than pretending.
-- *status* :: the same plan, reported and not run. Every migration's state, what the plan adds up to, and the problems it found -- a file changed after it was applied, a ledger entry whose file has gone. It opens a session that writes nothing at all, so it is safe to point at a database in production; the ledger is not even created if it is missing.
-- *validate* :: the same report as *status*, but exit ~1~ when the ledger and the files disagree. A report nobody reads is not a CI gate; this is.
-- *rollback* :: undoes applied migrations, newest first, with their paired ~*.undo.sql~ scripts. It refuses a range that contains a migration it cannot reverse, and ~--all~ stops at that boundary instead. See *Rolling back* below.
-- *repair* :: brings the ledger back into agreement with the files. A row that records a failure is forgotten, so the migration is attempted again; a migration whose file changed after it was applied has its checksum realigned, which is knowingly accepting the file as it now stands. With ~--dry-run~ it names the rows it would touch and writes nothing.
-- *clean* :: drops everything the catalogue reports in the current schema, the ledger included. With ~--dry-run~ it names what it would drop and drops nothing.
-- *help* :: prints the bundled ~resources/help.txt~, as ~--help~ / ~-h~ does.
+You can also build the image yourself with ~guix pack~; see [[file:maak.scm][maak.scm]]
+(~maak package-docker~). To use a tarball image you built locally, load it first
+with ~podman load < mutastructura.tar.gz~.
 
-** The flags that reach further into a run
+** From source, without Guix
 
-- ~--placeholder key=value~ :: substitutes ~${key}~ in every migration read during this run. Repeat the option (~--placeholder a=1 --placeholder b=2~) or put the pairs in one comma-separated value (~--placeholder a=1,b=2~). A ~${...}~ nobody defined is left exactly as it was, so a migration may carry template syntax of its own inside a comment. This is how a schema name, a tablespace or a role differs between deployments without forking the migrations.
-- ~--target VERSION~ :: stops at ~VERSION~, exactly like Flyway's ~target~: the migration with that version runs, everything below it runs, and anything above it is reported as ~beyond-target~. A date may be a prefix, so ~--target 2026-04-01~ covers that whole day.
-- ~--out-of-order~ :: applies a pending migration older than the newest one already applied. Such a migration is held back by default, because applying it on top of a newer schema is how a deploy breaks in a subtle way.
-- ~--to VERSION~ :: (rollback) undoes everything applied above ~VERSION~ and leaves ~VERSION~ applied. The rollback is refused as a whole if any migration in that range cannot be undone.
-- ~--steps N~ :: (rollback) undoes the ~N~ newest applied migrations, also refusing the whole range if one of them cannot be undone.
-- ~--all~ :: (rollback) undoes the newest contiguous run of rollback-able migrations, then stops and names the migration that blocked it.
-- ~--allow-irreversible~ :: (rollback) undoes a migration whose author marked it irreversible with the ~-- mutastructura: irreversible~ directive.
-- ~--dry-run~ :: reads the plan and every statement of every migration that would run, and changes nothing: no statement is sent, no ledger row is written, and the ledger is not created if it is missing. With ~clean~ it reports the drops instead of performing them; with ~repair~ it names the rows it would fix; with ~rollback~ it shows the undo statements and forgets nothing.
-- ~-v~ / ~--verbose~ :: shows each statement in full -- multi-line bodies and delimiters included -- instead of its first line.
+Clone the repository, install Guile 3.0, guile-dbi, the SQLite/PostgreSQL/MySQL
+DBI drivers and guile-gcrypt with your distribution's package manager, then run
+the program directly from the repository root:
 
 #+begin_src shell
-# a report about a database in production: nothing is written to it
-mutastructura status -m ./migrations \
-  -c postgresql://alice@db.example.net:5432/appdb -d postgresql
-
-# what would run, statement by statement, with the schema name substituted
-mutastructura migrate -m ./migrations -c ./local.db -d sqlite3 \
-  --placeholder schema=app_ --dry-run --verbose
-
-# exactly what clean would drop, and then the dropping itself
-mutastructura clean -c mysql://alice:secret@127.0.0.1:3306/appdb -d mysql --dry-run
-mutastructura clean -c mysql://alice:secret@127.0.0.1:3306/appdb -d mysql
+guile -L ./src -c '((@(mutastructura main) main))' \
+      --database sqlite3 \
+      --connection ./app.db \
+      --migrations ./migrations \
+      --resources ./resources
 #+end_src
 
-** Rolling back
+The ~--resources~ directory is only needed for the bundled help text and the
+platform-specific ledger definitions; without it, Mutastructura generates the
+ledger itself.
 
-~rollback~ undoes applied migrations, newest first. The undo of a migration is a
-file beside it with the same name and ~.undo.sql~ instead of ~.sql~:
-~2026-04-01_21:54:00_add-user.sql~ pairs with
-~2026-04-01_21:54:00_add-user.undo.sql~. The ledger row is forgotten only after
-the undo script succeeds, so the next ~migrate~ applies the migration again.
+The installed launcher treats the first word as the command. When you invoke
+Guile directly, say so explicitly: ~--command status~, ~--command rollback~,
+and so on. No ~--command~ means ~migrate~, which is what the program did when
+migrating was all it did.
 
-Not every migration can or should be reversed, and rollback does not pretend
-otherwise:
+* Quick start (PRIMA VIA)
 
-- a migration with no undo script blocks the rollback;
-- a migration whose author wrote the directive ~-- mutastructura: irreversible~
-  blocks it even when an undo script exists (override deliberately with
-  ~--allow-irreversible~);
-- a ledger row that records a failure blocks it too; ~repair~ is the command for
-  that state.
+You can be migrating in under a minute. This example uses SQLite, so there is
+no server to start.
 
-With no selection one migration is undone. ~--steps N~ undoes ~N~ and ~--to
-VERSION~ undoes everything applied above ~VERSION~, leaving it applied. Both are
-all-or-nothing: if anything in the range is blocked, nothing runs and the
-offending migrations are named. ~--all~ is the smart one: it undoes the newest
-contiguous run of rollback-able migrations, stops and names the migration that
-blocked it, and exits ~0~ for the work it did.
+#+begin_src shell
+mkdir -p hello-mutastructura/migrations
+cd hello-mutastructura
+
+cat > migrations/2026-04-01_init.sql <<'SQL'
+CREATE TABLE account (
+    id   INTEGER PRIMARY KEY,
+    name TEXT NOT NULL
+);
+SQL
+
+cat > migrations/2026-04-02_audit.sql <<'SQL'
+CREATE TABLE audit_log (
+    id     INTEGER PRIMARY KEY,
+    action TEXT NOT NULL
+);
+SQL
+
+cat > migrations/2026-04-02_audit.undo.sql <<'SQL'
+DROP TABLE audit_log;
+SQL
+
+mutastructura status   -m ./migrations -c ./app.db -d sqlite3
+mutastructura migrate  -m ./migrations -c ./app.db -d sqlite3
+mutastructura validate -m ./migrations -c ./app.db -d sqlite3
+mutastructura rollback -m ./migrations -c ./app.db -d sqlite3 --dry-run
+#+end_src
+
+~status~ opens ~app.db~ (SQLite creates the file) but writes no schema and does
+not create the ledger. ~migrate~ creates ~migrations_history~ and applies what is
+pending; ~validate~ checks that ledger and files still agree; ~rollback --dry-run~
+shows exactly which undo statements would run without running them.
+
+A typical deployed workflow looks like this:
+
+#+begin_src shell
+mutastructura status   -m ./migrations -c "$DATABASE_URL" -d postgresql
+mutastructura migrate  -m ./migrations -c "$DATABASE_URL" -d postgresql --target 2026-04-01
+mutastructura validate -m ./migrations -c "$DATABASE_URL" -d postgresql
+#+end_src
+
+* Commands (IMPERIA)
+
+The commands share one plan and one ledger; the first word on the command line
+selects the view. With no word at all, ~migrate~ runs.
+
+| Command    | What it does                                                      |
+|------------+-------------------------------------------------------------------|
+| ~migrate~  | Apply pending migrations in order and record each in the ledger   |
+| ~status~   | Report every migration's state and every problem; write nothing   |
+| ~validate~ | The same report, but exit 1 when ledger and files disagree        |
+| ~rollback~ | Undo applied migrations, newest first, using ~*.undo.sql~ scripts |
+| ~repair~   | Forget recorded failures and realign changed checksums            |
+| ~clean~    | Drop every object the catalogue reports, the ledger included      |
+| ~help~     | Print the bundled help text (~--help~ / ~-h~)                     |
+
+** ~migrate~
+
+Applies what is pending, in order. The run is one transaction where the engine
+has transactional DDL; a failure rolls the whole run back. On MySQL, where DDL
+commits implicitly, the message says that what ran stands and records no success
+for the failed migration.
+
+#+begin_src shell
+mutastructura migrate -m ./migrations -c ./app.db -d sqlite3
+mutastructura migrate -m ./migrations -c "$DATABASE_URL" -d postgresql --target 2026-04-01
+mutastructura migrate -m ./migrations -c ./app.db -d sqlite3 --out-of-order
+#+end_src
+
+- ~--target VERSION~ stops at a version; anything above it is reported as
+  ~beyond-target~. A date is a prefix, so ~--target 2026-04-01~ covers that day.
+- ~--out-of-order~ allows a pending migration older than the newest applied one.
+  Without it such a migration is ~superseded~ and held back.
+- ~--dry-run~ prints the plan and every statement, and changes nothing.
+
+** ~status~
+
+Reports the ledger and the plan side by side: ~pending~, ~applied~, ~changed~,
+~missing~, ~superseded~, ~beyond-target~, and the repeatable migration's own
+states. It opens a session that writes nothing -- the ledger is not even created
+if it is missing -- so it is safe against production.
+
+#+begin_src shell
+mutastructura status -m ./migrations -c ./app.db -d sqlite3
+#+end_src
+
+** ~validate~
+
+The same report, with an exit status a CI pipeline can trust. It exits 0 when
+the ledger and the files agree, and 1 when a file changed after it was applied
+or a ledger entry's file has gone.
+
+#+begin_src shell
+mutastructura validate -m ./migrations -c "$DATABASE_URL" -d postgresql
+#+end_src
+
+** ~rollback~
+
+Undoes applied migrations, newest first, with the ~*.undo.sql~ file that has the
+same version. See *Rolling back* below for the selection rules and the
+not-everything-is-reversible policy.
 
 #+begin_src shell
 mutastructura rollback -m ./migrations -c ./app.db -d sqlite3
@@ -201,159 +344,474 @@ mutastructura rollback -m ./migrations -c ./app.db -d sqlite3 --to 2026-04-01
 mutastructura rollback -m ./migrations -c ./app.db -d sqlite3 --all --dry-run
 #+end_src
 
-Repeatable migrations are not rolled back: ~migrate~ re-runs them when their
-contents change. With no versioned migration applied, ~rollback~ says so and
-exits ~0~. The whole rollback is one transaction where the engine has
-transactional DDL; on MySQL, where it does not, the message says plainly that
-the undo statements that ran stand.
+** ~repair~
 
-Run easily and reproducibly with Maak + Guix, or use directly Guile, or load a REPL (like Arei)
+Brings the ledger back into agreement with the files. A row that records a
+failure is forgotten, so the migration is attempted again. A migration whose
+file changed after it was applied has its checksum realigned -- knowingly
+accepting the file as it now stands. ~--dry-run~ names the rows and writes
+nothing.
 
-#+BEGIN_SRC sh
-maak run # or maak dev-run
-# or
-guix time-machine --channels=channels.scm -- \
-     shell -f guix.scm -- mutastructura \
-     --database sqlite3 \
-     --connection ./lucidplan-test.sqlite \
-     --migrations ./migrations/lucidplan
-#+END_SRC
+#+begin_src shell
+mutastructura repair -m ./migrations -c ./app.db -d sqlite3 --dry-run
+mutastructura repair -m ./migrations -c ./app.db -d sqlite3
+#+end_src
 
-** Argument Details
-- ~-d~ / ~--database~ :: The engine you are targeting: ~sqlite3~, ~postgresql~, ~cockroachdb~, ~mysql~ (or ~mariadb~), plus the aliases each one accepts (~pg~, ~psql~, ~crdb~, ~percona~, ~timescaledb~, ~yugabyte~...).
-- ~-c~ / ~--connection~ :: A URL, or the driver's own connection string. A URL is ~sqlite3:///var/lib/app.db~, ~postgresql://user:pass@host:5432/appdb~ or ~mysql://user:pass@host:3306/appdb~; anything else is passed through as the engine's connection string.
-- ~-m~ / ~--migrations~ :: The path to your migrations directory: ~*.sql~ files and their ~*.undo.sql~ counterparts. Read by ~migrate~, ~status~, ~validate~, ~rollback~ and ~repair~; ~clean~ never looks at it.
-- ~--placeholder~ :: ~key=value~, repeatable (or comma-separated), substituting ~${key}~ in every migration read during this run.
-- ~--target~ :: the version to stop at; see the flyway-like ~target~ above.
-- ~--out-of-order~ :: allow a migration older than the newest applied one to run.
-- ~--to~ / ~--steps~ / ~--all~ :: the three ways to select how far ~rollback~ goes; they are alternatives.
-- ~--allow-irreversible~ :: let ~rollback~ run a migration marked irreversible by its author.
-- ~--dry-run~ :: report what would run (or, for ~clean~, what would be dropped; for ~repair~, what rows would change; for ~rollback~, which undo statements would run) and change nothing.
-- ~-v~ / ~--verbose~ :: each statement in full, instead of its first line.
-- ~-r~ / ~--resources~ :: (optional) Path to internal application resources (used for development and installation, bundled from ./resources dir).
+** ~clean~
 
-Every command exits ~0~ when it did what it was asked to do and ~1~ when it could not -- a migration that failed, a connection that was refused, an option that was missing, a URL that named an engine other than ~--database~, a ~validate~ that found a ledger and its files disagreeing, or a ~rollback~ whose requested range contains a migration that cannot be undone. The failure is reported as one line beginning ~[error]~. ~rollback --all~ exits ~0~ when it undid everything reversible and stopped at a named boundary.
+Drops every table and view the catalogue reports in the current schema, the
+ledger included. It is intentionally blunt; use ~--dry-run~ first.
 
-** Roadmap
+#+begin_src shell
+mutastructura clean -c ./app.db -d sqlite3 --dry-run
+mutastructura clean -c ./app.db -d sqlite3
+#+end_src
 
-See [[file:ROADMAP.org][ROADMAP.org]] for how mutastructura compares with Alembic, Django, Flyway, Liquibase and yoyo, and for the features planned next -- baselining, hooks and offline SQL generation among them.
+** Exit status
 
-----------------
+| Status | Meaning                                                                 |
+|--------+-------------------------------------------------------------------------|
+|      0 | The command did what it was asked to do                                 |
+|      1 | It could not: a migration failed, a connection was refused, an option   |
+|        | was missing, a URL named another engine, ~validate~ found a problem, or |
+|        | a rollback range contained a migration that cannot be undone            |
+
+A failure is reported as one line beginning ~[error]~. ~rollback --all~ is the
+one deliberate exception: it exits 0 when it undid everything reversible and
+stopped at a named boundary.
+
+* Writing migrations (SCRIBA)
+
+A migration is a SQL file whose name carries its version. Mutastructura
+recognises two naming conventions, and neither requires a configuration file.
+
+** Naming and order
+
+- *Mutastructura style:* ~YYYY-MM-DD_HH:MM:SS_description.sql~, ordered by file
+  name. Example: ~2026-04-01_21:54:00_init.sql~.
+- *Flyway style:* ~V1.2__add-user.sql~ for versioned, ~R__views.sql~ for
+  repeatable, ~U1.2__add-user.sql~ for undo. Dotted versions sort numerically
+  (~1.10~ after ~1.9~).
+- *Repeatable:* any file ending in ~.repeatable.sql~. It runs when it is
+  pending and again whenever its checksum changes, and takes its place in
+  filename order like every other migration -- the right home for views,
+  functions and seed data.
+- *Undo:* any file ending in ~.undo.sql~. It is never run by ~migrate~; it is
+  the script ~rollback~ pairs with the migration of the same version.
+- *SQLite:* ~*.sqlite.sql~ is also recognised, for deployments that keep
+  engine-specific files side by side.
+- *Ordering:* versioned migrations run once, in version order. Versioned files
+  are never re-run because their contents changed; ~validate~ reports that and
+  ~repair~ is how you accept it.
+
+** Undo scripts and irreversible migrations
+
+Pair an undo with the migration it reverses by giving it the same name and
+~.undo.sql~:
+
+#+begin_src sql
+-- 2026-04-02_10:00:00_audit.sql
+CREATE TABLE audit_log (
+    id     INTEGER PRIMARY KEY,
+    action TEXT NOT NULL
+);
+#+end_src
+
+#+begin_src sql
+-- 2026-04-02_10:00:00_audit.undo.sql
+DROP TABLE audit_log;
+#+end_src
+
+Some changes have an undo script and still should not be reversed
+automatically -- a data migration, a destructive rewrite. Say so in a comment:
+
+#+begin_src sql
+-- mutastructura: irreversible
+UPDATE account SET plan = 'legacy' WHERE signed_up_at < '2025-01-01';
+#+end_src
+
+The directive blocks ~rollback~ even when an undo script exists. Override it
+deliberately with ~--allow-irreversible~.
+
+** Placeholders
+
+Substitute deployment-specific values with ~${key}~:
+
+#+begin_src sql
+CREATE SCHEMA IF NOT EXISTS ${schema};
+CREATE TABLE ${schema}.account (id INTEGER PRIMARY KEY);
+#+end_src
+
+#+begin_src shell
+mutastructura migrate -m ./migrations -c "$DATABASE_URL" -d postgresql \
+  --placeholder schema=app_prod --placeholder role=app_owner
+#+end_src
+
+Repeat ~--placeholder~, or put the pairs in one comma-separated value. A
+~${...}~ nobody defined is left exactly as it was, so a migration may carry its
+own template syntax in a comment.
+
+** What the SQL lexer understands
+
+Migrations are split into statements by a finite-state machine, not by
+searching for semicolons. It handles single-quoted strings with ~~''~~ escapes,
+double-quoted identifiers, MySQL backticks, ~--~ and ~#~ line comments, nested
+block comments, PostgreSQL dollar quoting (~$tag$ ... $tag$~), PostgreSQL
+escape strings (~E'...'~), MySQL backslash escapes, the mysql client's
+~DELIMITER~ directive, and ~CREATE TRIGGER ... BEGIN ... END~ bodies. Each
+statement is reported with the line it starts on, so a failure says which line
+of which file failed.
+
+* Rolling back
+
+Not every migration can or should be reversed. Mutastructura treats that as a
+first-class fact rather than a footnote.
+
+| Selection      | What it does                                                   |
+|----------------+----------------------------------------------------------------|
+| (none)         | Undo one migration -- the safe default                         |
+| ~--steps N~    | Undo the N newest applied migrations                           |
+| ~--to VERSION~ | Undo everything applied above VERSION, leaving VERSION applied |
+| ~--all~        | Undo the newest contiguous run that undo scripts allow         |
+
+- ~--steps~ and ~--to~ are *all-or-nothing*. If anything in the requested range
+  is blocked, nothing runs and every blocker is named.
+- ~--all~ is the smart boundary. It undoes the reversible suffix, names the
+  migration that stopped it, and exits 0 for the work it did.
+- A migration is *blocked* when it has no undo script, when its ledger row
+  records a failure (use ~repair~), or when its author marked it irreversible
+  (override with ~--allow-irreversible~).
+- Repeatable migrations are left alone. ~migrate~ re-runs them when their
+  contents change; they are not versioned history to walk back.
+- The undo scripts run inside the same transaction and lock as a forward run.
+  A ledger row is forgotten only after its undo script succeeds. On MySQL, where
+  DDL commits implicitly, the message is explicit about what stands.
+
+A real refusal looks like this:
+
+#+begin_src text
+ROLLBACK PLAN (newest first):
+
+  2026-04-01_init.sql          blocked    no undo script
+
+[error] cannot roll back: 2026-04-01_init.sql (no undo script)
+#+end_src
+
+And a partial ~--all~ says exactly where it stopped:
+
+#+begin_src text
+ROLLED BACK 1 MIGRATION
+
+STOPPED BEFORE 2026-04-01_init.sql: no undo script.
+#+end_src
+
+* Configuration and options (OPTIONES)
+
+There is no configuration file to learn. Everything is a command-line option;
+the defaults are the safe ones.
+
+| Option                 | Applies to                       | Meaning                                                                  |
+|------------------------+----------------------------------+--------------------------------------------------------------------------|
+| ~-d~, ~--database~     | all                              | Engine id or alias: ~sqlite3~, ~postgresql~, ~cockroachdb~, ~mysql~, ... |
+| ~-c~, ~--connection~   | all                              | URL or the driver's own connection string                                |
+| ~-m~, ~--migrations~   | all except ~clean~               | Migration directory                                                      |
+| ~-r~, ~--resources~    | all                              | Bundled resources directory (help text, ledger definitions)              |
+| ~--placeholder~        | all                              | ~key=value~ substitution, repeatable or comma-separated                  |
+| ~--target~             | migrate, status, validate        | Stop at a version                                                        |
+| ~--out-of-order~       | migrate, status, validate        | Allow an older pending migration to run                                  |
+| ~--to~                 | rollback                         | Undo everything above VERSION                                            |
+| ~--steps~              | rollback                         | Undo the N newest applied migrations                                     |
+| ~--all~                | rollback                         | Undo as far back as undo scripts allow                                   |
+| ~--allow-irreversible~ | rollback                         | Override the irreversible directive                                      |
+| ~--dry-run~            | migrate, rollback, repair, clean | Report statements, drops, repairs or undo statements; change nothing     |
+| ~-v~, ~--verbose~      | all                              | Show each statement in full, not just its first line                     |
+| ~-h~, ~--help~         | --                               | Show help and exit                                                       |
+
+** Connection URLs
+
+#+begin_src shell
+sqlite3:///var/lib/app.db
+sqlite3://./local.db
+postgresql://alice:secret@db.example.net:5432/appdb
+mysql://alice:secret@127.0.0.1:3306/appdb
+#+end_src
+
+Anything that is not a known URL scheme is passed through as the engine's own
+connection string, which is guile-dbi's
+~user:pass:db:tcp:host:port~ form. For PostgreSQL and MySQL URLs, the user,
+password and database name cannot contain a colon -- that form cannot escape one
+-- so use the driver's own connection string there.
+
+** Engines
+
+| Engine id     | Aliases (examples)                                                    | Driver     |  Port | Transactional DDL | Migration lock                  |
+|---------------+-----------------------------------------------------------------------+------------+-------+-------------------+---------------------------------|
+| ~sqlite3~     | ~sqlite~, ~sqlite-3~, ~sqlite3-embedded~                              | sqlite3    |     0 | Yes               | ~BEGIN IMMEDIATE~ (the file)    |
+| ~postgresql~  | ~postgres~, ~pg~, ~psql~, ~pgsql~, ~yugabyte~, ~timescaledb~, ~citus~ | postgresql |  5432 | Yes               | ~pg_advisory_lock~              |
+| ~cockroachdb~ | ~cockroach~, ~crdb~                                                   | postgresql | 26257 | Yes               | transaction + ledger unique key |
+| ~mysql~       | ~mariadb~, ~percona~, ~mysql-mariadb~, ~auroramysql~                  | mysql      |  3306 | No (implicit)     | ~GET_LOCK~                      |
+
+The engine id decides the *dialect*; the driver is what guile-dbi opens. That is
+why CockroachDB can be reached through the PostgreSQL driver while keeping its
+own default port and dialect quirks, and why adding a protocol-compatible
+database is a line in the engine registry rather than a branch in every command.
 
 * How it works (ARCHITECTURA)
 
 When invoked, Mutastructura:
-- Opens a connection to your specified database engine, through the runner its family selects: ~sql-runner~ over ~guile-dbi~ for the relational engines.
-- Queries the historical ledger (~migrations_history~) to see which migrations have already run, and crossed the Rubicon.
-- If no history exists, it initializes the schema via platform-specific genesis files (~mutastructura-init.sql~).
-- Scans your provided migrations directory, and gets migrations to run, in *chronological + alphabetical order* based on filename (anything works, but the best naming for this purpose is in the shape of ~YYYY-MM-DD_HH:MM:SS_some-name.sql~, e.g. ~2026-04-01_21:54:00_init.sql~)
-- Generates SHA256 hashes for each file. Changing the file contents means changing the SHA and will trigger a WARNING
-- Safely splits the SQL files into individual statements.
-- Executes the statements synchronously (or, for ~status~, reports them and runs nothing at all).
-- Commits the transaction and gracefully closes the connection.
 
-Which of those three things happens is the command's business: ~migrate~ runs the plan, ~status~ reports it, ~clean~ drops what the database has. All three are the same plan read in different ways, which is why the whole command set is one planner and one runner.
+1. opens a connection to the engine you named, through the runner its family
+   selects (~sql-runner~ over guile-dbi);
+2. reads the ledger (~migrations_history~), or treats it as empty when this is a
+   fresh database;
+3. scans the migration directory and plans the difference: what is pending,
+   applied, changed, missing, superseded or beyond-target;
+4. applies, reports, validates, repairs or rolls back according to the command;
+5. commits the work and closes the connection, releasing the migration lock.
 
-Mutastructura follows a classic functional-core, imperative-shell architecture, divided into distinct modules that handle specific responsibilities.
+The whole command set is one planner read in different ways. ~migrate~ runs the
+plan, ~status~ and ~validate~ report it, ~rollback~ walks the inverse plan,
+~repair~ reconciles it, and ~clean~ clears the schema.
 
-Migrations whose name ends in ~*.repeatable.sql~ will be deemed as repeatable and thus always executed.
+** The migration dance
 
-*** The Imperative Shell (CLI & Orchestration)
-Located in ~(mutastructura main)~, this is the commander of the program. It deals with all the "side-effects": reading command-line arguments, opening the database connection, reading from the file system, and printing outputs to the terminal.
+Underneath the commands, every forward run follows the same small choreography:
 
-*** What each engine can promise (FIDES PER ENGINE)
+1. make sure ~migrations_history~ exists -- unless the command only reads, in
+   which case it must not be created;
+2. fetch the ledger and the migration files;
+3. compare them into a plan: pending, applied, changed, missing, superseded,
+   beyond-target;
+4. hand the pending files to the persistence layer, one at a time, in order;
+5. commit, release the lock, and close the connection.
 
-The plan is the same everywhere; what a database can *guarantee* while it runs is not, and mutastructura says which is which rather than pretending they are alike.
+A rollback does the same dance backwards: it pairs each applied migration with
+its undo script, checks that the whole requested range is reversible, then runs
+the scripts newest-first and forgets each ledger row as its script succeeds.
 
-- *SQLite and PostgreSQL* have transactional DDL: the run is one transaction, a migration that fails leaves the database as it was, and nothing is recorded as having happened.
-- *MySQL and MariaDB* commit DDL implicitly -- a property of the server, not something a client can work around -- so what ran before a failure stands. The failure is reported, the ledger records no success, and the migration is attempted again on the next run.
-- *The migration lock* is the transaction itself on SQLite (~BEGIN IMMEDIATE~), and an advisory lock on PostgreSQL and MySQL. MySQL's ~GET_LOCK~ answers 1 when it granted the lock and 0 after waiting ten seconds and giving up, and mutastructura reads that answer instead of assuming the statement worked: a run that could not take the lock fails and says so, rather than interleaving with the run that holds it.
-- *guile-dbi's PostgreSQL driver cannot report a refused statement*: it sends the query and reports only that the send worked, so a migration with a syntax error in it looks exactly like one that ran. mutastructura asks the server a question it cannot answer wrongly -- inside a transaction, PostgreSQL refuses every statement after a failed one -- and so names the migration and the line that failed. The same care is taken with the rows of a query: the status is read after them, because that driver abandons a row whose column type it does not know, and the ledger's timestamps are read as text for exactly that reason.
-- *CockroachDB* has no advisory locks at all, so there the transaction plus the ledger's unique key on the migration's name is what keeps two runs apart.
+** The imperative shell
 
-*** The Migration Dance
+~(mutastructura main)~ is the commander. It owns everything that smells of the
+outside world: parsing arguments, opening the connection, reading the resources,
+printing the report, and choosing the exit status. Keeping those side effects in
+one place is what lets the planner stay pure.
 
-Ensure the ~migrations_history~ table exists (or initialize it). This will act as our ledger.
+** The persistence layer
 
-Fetch the database state (contents from ~migrations_history~) and the available  local migration files to run.
+The database work lives behind the runner, over ~guile-dbi~. Its most important
+promise is the transaction: a forward run and its ledger rows are one atomic
+unit wherever the engine has transactional DDL. If a statement fails, the
+runner catches it, rolls back, and explains what happened instead of leaving a
+half-migrated schema behind. On MySQL, where DDL commits implicitly, it reports
+the truth -- what ran stands -- rather than promising an atomicity the server
+does not offer.
 
-Compare them to find unapplied migrations.
+** A functional core, an imperative shell
 
-Hand the unapplied files to the persistence layer for execution.
+| Module                                         | Responsibility                                                                                               |
+|------------------------------------------------+--------------------------------------------------------------------------------------------------------------|
+| ~(mutastructura mutastructura)~                | Engine registry, connection specs, discovery, planning, rollback and repair selection. Pure and unit-tested. |
+| ~(mutastructura main)~                         | The CLI: options, output, exit status, and the order in which things happen.                                 |
+| ~(mutastructura persistence runners)~          | Turns an engine's family into the runner that speaks it.                                                     |
+| ~(mutastructura persistence migration-runner)~ | The SQL runner: session, ledger, statements, transactions, lock, clean.                                      |
+| ~(mutastructura persistence dialect)~          | Everything engine-specific: quoting, ledger DDL, catalogue probes, locks, verification.                      |
+| ~(mutastructura persistence sql-parser)~       | The finite-state-machine SQL lexer and statement splitter.                                                   |
+| ~(mutastructura persistence util)~             | Connection and logging helpers shared by the runner.                                                         |
 
-*** The Persistence Layer (Transactions & Execution)
-Where the database interactions happen via the dbi library.
+The planner never touches a database. It is handed files and ledger entries and
+returns the plan, which is why ~--dry-run~ and the unit tests can exercise the
+same decisions a real run makes.
 
-Its most critical architectural feature is the with-transaction higher-order function. By wrapping all database executions inside a ~BEGIN~ and ~COMMIT~ block—and catching exceptions to trigger a ~ROLLBACK~ it guarantees that the database state is treated as atomic. It either succeeds entirely or fails cleanly.
+** What each engine can promise
 
-*** The Lexical State Machine (SQL Parser)
-Also housed in the persistence layer, the ~string-split-to-queries~ function is arguably the most advanced architectural component of the persistence layer. Rather than relying on fragile regular expressions to split SQL by semicolons, it uses a true Finite State Machine (FSM). It parses the SQL files for queries character-by-character.
+| Engine              | Failed migration                                             | Lock                                            |
+|---------------------+--------------------------------------------------------------+-------------------------------------------------|
+| SQLite3, PostgreSQL | The run is one transaction and rolls back completely         | The transaction or an advisory lock             |
+| CockroachDB         | Transactional DDL; no advisory locks                         | Transaction plus the ledger's unique name key   |
+| MySQL, MariaDB      | DDL commits as it runs; what ran stands, no success recorded | ~GET_LOCK~, read explicitly rather than assumed |
 
------------------
+guile-dbi's PostgreSQL driver cannot report a refused statement: it sends the
+query and reports only that the send worked. Mutastructura therefore asks the
+server a question it cannot answer wrongly -- inside a transaction, PostgreSQL
+refuses every statement after a failed one -- and names the migration and the
+line that failed. It also reads the ledger's timestamp as text for the same
+reason: that driver abandons a row whose column type it does not know.
 
-* Licensing
+** The ledger
 
-mutastructura and all of its source code are free software, licensed under the GNU Affero General Public License v3 (or newer at your convenience).
+One row per migration, in every engine, with the columns the runner discovers
+rather than assumes:
 
-https://www.gnu.org/licenses/agpl-3.0.html
+| Column           | Purpose                                             |
+|------------------+-----------------------------------------------------|
+| ~id~             | Insertion order; also the order rollback walks back |
+| ~name~           | Migration file name, unique                         |
+| ~checksum~       | SHA-256 of the file when it was applied             |
+| ~description~    | Readable description from the file name             |
+| ~kind~           | ~versioned~ or ~repeatable~                         |
+| ~installed_on~   | When it was applied                                 |
+| ~installed_by~   | Who applied it (defaults to ~mutastructura~)        |
+| ~execution_time~ | Milliseconds the migration took                     |
+| ~success~        | 1, or 0 for a recorded failure                      |
 
-The documentation and examples, including this document, which are provided with mutastructura, are all licensed under the GNU Free Documentation License v1.3 (or newer at your convenience).
+An older deployment's ledger may have fewer columns. The runner asks the
+catalogue which ones exist and writes only those, so upgrading Mutastructura is
+a non-event.
 
-https://www.gnu.org/licenses/fdl-1.3.html
+** The SQL lexer
 
-----------------
+The lexer walks the file one character at a time and knows the quoting rules of
+the engines we speak to: strings, identifiers, comments, dollar quoting,
+~DELIMITER~, escape strings and trigger bodies. That is what turns "a migration
+failed" into "line 47 of this file failed", and what prevents a semicolon inside
+a function body from cutting it in half.
 
-* AI Policy
+* Development and testing (LABOR)
 
-This project adheres to the [[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-ai-policy/index.html][jointhefreeworld AI (Artificial Intelligence) policy]].
+The project uses [[https://codeberg.org/jjba23/maak][Maak]] as its command runner
+and GNU Guix for a reproducible environment.
 
-Our core principle is simple: *AI should assist human creativity and problem-solving, never replace human reasoning.*
+#+begin_src shell
+guix time-machine --channels=channels.scm -- shell -m manifest.scm
+maak test        # the Veritas unit suite
+maak fmt         # format Scheme with `guix style`
+maak repl        # development REPL with Ares
+maak dev-run     # run against the bundled lucidplan example
+maak run         # run the installed program against the example
+maak docs        # generate API documentation
+#+end_src
 
-While tools like Large Language Models (LLMs) and interactive chatbots can be beneficial for reviewing, refactoring small functions, or acting as a sounding board, they should be used with moderation.
+Run the tests directly, without Maak, with:
 
-We require a human in the loop for all contributions. The use of autonomous AI agents to automatically generate and submit pull requests to this project is strictly prohibited.
+#+begin_src shell
+VERITAS_TEST_TYPE=unit VERITAS_RUN_BENCHMARKS=false \
+guix shell -m manifest.scm -- \
+  guile -L ./src -L ./test -L . -c '((@ (veritas runner) run-tests))'
+#+end_src
 
+The suite runs the pure planners (engines, connection URLs, discovery,
+placeholder substitution, ledger reading, planning, rollback) and the SQL
+runner against a real SQLite database in ~/tmp~. When you fix a bug, add the case
+that would have caught it -- the tests are the specification.
 
-----------------------
+** Layout
 
-* Code of conduct
+#+begin_src text
+src/mutastructura/
+  mutastructura.scm        the pure core: engines, discovery, planning
+  main.scm                 the CLI
+  persistence/
+    runners.scm            family -> runner dispatch
+    migration-runner.scm   the SQL runner and ledger
+    dialect.scm            per-engine SQL for ledger, locks and catalogue
+    sql-parser.scm         the lexer
+    util.scm               connection and logging helpers
+resources/
+  help.txt                 the bundled help text
+  application-migrations/  optional ledger definitions per engine
+migrations/lucidplan/      a small example migration set
+test/veritas/unit/         the unit suite
+ROADMAP.org                where the project is going
+#+end_src
 
-This project adheres to the jointhefreeworld code of conduct. Find it here:
+** REPL: interactive workflow, developer power
 
-https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-conduct/index.html
+A REPL (Read-Eval-Print Loop) is an interactive environment connected to your
+console, running application, language compiler and more. Lisp dialects,
+especially Guile Scheme, have excellent support for this. With
+[[https://guix.gnu.org/][Guix]], [[https://www.gnu.org/software/emacs/][Emacs]] and
+[[https://git.sr.ht/~abcdw/emacs-arei][Arei/Ares]] (with
+[[https://github.com/vspinu/sesman][Sesman]]) you get a fast, conversational
+workflow: evaluate a function or a line, inspect values, redefine a broken
+function without restarting, and get immediate feedback. ~maak repl~ starts one.
 
-In summary, we foster an inclusive, respectful, and cooperative environment for all contributors and users of this free software project. Inspired by the ideals of the GNU Project, we strive to uphold freedom, equality, and community as guiding principles. We believe that collaboration in a community of mutual respect is essential to creating excellent free software.
+- *Incremental development:* write, test, inspect and evaluate one function --
+  or one line -- at a time. No save/compile/restart cycle.
+- *Debugging without ~print~:* pause, inspect objects, change a value, and
+  redefine a broken function while the program is still running.
+- *Fast prototyping:* load a library or an API and call it immediately, which
+  is a much quicker way to learn than reading documentation alone.
 
+When the REPL is integrated into your editor, any line, selection or file can
+be evaluated with a keystroke. That is the workflow Arei and Sesman are for.
 
------------------
+** On reproducibility: why GNU Guix?
 
-* REPL: Interactive workflow, developer power
-A REPL (Read-Eval-Print Loop) is an interactive environment, which can be used connected to your console, running application, language compiler and more, which gives you superpowers as an engineer 🦸🏼.
+A build should never fail because "it worked on my machine." Reliable software
+development requires explicit, bit-for-bit reproducibility and a functional
+approach to package management.
 
-Lisp dialects, more specifically Guile Scheme, have great support for this. I personally of course like to do this with [[https://guix.gnu.org/][Guix]], [[https://www.gnu.org/software/emacs/][Emacs]], ([[https://git.sr.ht/~abcdw/emacs-arei][Arei/Ares]] + [[https://github.com/vspinu/sesman][sesman]]) you can get an ultimate extensible powerful editor experience, miles ahead of traditional IDEs 🐂 .
+- *Declarative build graphs:* packages are pure functions of their inputs, with
+  no implicit system state.
+- *Programmable with Guile:* system and package configurations are Scheme, not
+  a separate DSL.
+- *Time travel:* rebuild the exact environment from any point in git history
+  with ~guix time-machine~.
+- *Atomic operations:* upgrade or roll back environments without orphaned
+  dependencies or broken states.
+- *Unified tooling:* one tool manages development shells, containers, package
+  builds and system configurations.
 
-It fundamentally changes the development workflow by eliminating the slow /edit, save, compile, run/ cycle. Instead of writing a whole program and then running it to see what happens, you get a fast, conversational workflow. What does this mean for in practice?
+* Roadmap (VIA FUTURA)
 
-- *Incremental Development:* Write, test, inspect, evaluate one function or even one line at a time. Get immediate feedback without running the entire app.
-- *Powerful Debugging:* Forget adding ~print~ statements and restarting. You can pause, inspect objects, change values, and even redefine a broken function on the fly to test a fix in any environment (yes even in production, while running).
-- *Fast Prototyping & Learning:* Instantly experiment with a new library or API. Just load it and start calling functions to see how they work, which is much faster than only reading documentation.
+See [[file:ROADMAP.org][ROADMAP.org]] for a full comparison with Alembic, Django,
+Flyway, Liquibase and yoyo, and for the prioritised plan. The short version:
 
-When integrated into your code editor, you can execute any piece of code (a line, a selection, or a file) with a keyboard shortcut and see the result instantly, creating a seamless and powerful development experience.
+- *Next:* ~baseline~ / ~stamp~ for adopting an existing database, and offline
+  SQL output (~migrate --sql~) for review and DBA handoff.
+- *Then:* lifecycle hooks, configurable lock timeouts, per-migration
+  transaction control, machine-readable status and a configuration file.
+- *Later:* migration dependencies, squashing and multi-schema targets.
+- *Deliberately not:* model autogeneration, branch/merge revision graphs, and
+  live-schema drift detection. Mutastructura is SQL-first; those belong to
+  tools that own a model layer.
 
--------
+* Contributing (CONTRIBUTIO)
 
-* On Reproducibility: Why GNU Guix?
+Contributions are warmly welcome -- code, documentation, bug reports, and
+questions all make the project better.
 
-A build should never fail because "it worked on my machine." Reliable software development requires explicit, bit-for-bit reproducibility and a functional approach to package management and system deployment.
+- *Bugs and ideas:* open an issue in the
+  [[https://codeberg.org/jjba23/mutastructura/issues][Codeberg issue tracker]].
+  Include your operating system, the database engine and version, the exact
+  command, and what you expected versus what happened. A minimal migration
+  directory that reproduces the problem is worth a page of prose.
+- *Patches:* fork the repository on Codeberg, make a focused branch, and open a
+  pull request. Small, self-contained changes are easiest to review.
+- *Tests:* run ~maak test~ before sending a patch. Add a test for the behaviour
+  you changed -- a bug fix without a failing-first test is a rumour.
+- *Style:* match the surrounding code. Comments explain *why* something is the
+  way it is; the code says what it does. Format Scheme with ~maak fmt~.
+- *Docs:* if something confused you, that is a documentation bug. Tell us, or
+  send the sentence you wish you had found.
 
-#+BEGIN_EXPORT html
-<a href="https://guix.gnu.org/">
-  <img src="https://jointhefreeworld.org/ggg/dist/gnu-guix.svg" alt="GNU Guix logo" style="max-width: 250px; width: 100%; height: auto;" />
-</a>
-#+END_EXPORT
+** AI policy
 
-- *Declarative Build Graphs:* Packages are pure functions of their inputs with no implicit system state.
-- *Programmable with Guile:* Full system and package configurations written in [[https://www.gnu.org/software/guile/][Guile Scheme]] rather than rigid DSLs or static files.
-- *Time Travel:* Rebuild the exact system state from any point in git history using ~guix time-machine~.
-- *Atomic Operations:* Instantly upgrade or roll back environments without leaving orphaned dependencies or broken states.
-- *Unified Tooling:* One tool manages development shells, isolated containers, package builds, and full system configurations.
+This project adheres to the
+[[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-ai-policy/index.html][jointhefreeworld AI policy]].
+The core principle is simple: *AI should assist human creativity and
+problem-solving, never replace human reasoning.* LLMs can be useful for
+reviewing, refactoring small functions or acting as a sounding board, but a
+human must stay in the loop. Autonomous AI agents that generate and submit pull
+requests are not welcome.
+
+** Code of conduct
+
+This project follows the
+[[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-conduct/index.html][jointhefreeworld code of conduct]]:
+be inclusive, respectful and cooperative. We want a community where people can
+learn, disagree well, and build excellent free software together.
+
+* License (LICENTIA)
+
+Mutastructura and all of its source code are free software, licensed under the
+*GNU Affero General Public License v3 or newer*. See [[file:COPYING][COPYING]] or
+[[https://www.gnu.org/licenses/agpl-3.0.html][the AGPL text]].
+
+The documentation and examples, including this README, are licensed under the
+*GNU Free Documentation License v1.3 or newer*:
+[[https://www.gnu.org/licenses/fdl-1.3.html][the FDL text]].
+
+#+begin_quote
+_Veni, vidi, Lisp._
+#+end_quote
