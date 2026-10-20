@@ -160,8 +160,8 @@
 ;;; ============================================================================
 
 ;; A database we know how to talk to.  `family' is what the orchestration layer
-;; switches on -- `relational' goes through guile-dbi and speaks SQL, `document'
-;; goes through the MongoDB wire protocol -- while `id' is what a user types.
+;; switches on to pick a runner -- `relational' goes through guile-dbi and speaks
+;; SQL -- while `id' is what a user types.
 ;;
 ;; `driver' is separate from `id' on purpose, and it is what makes a database we
 ;; do not ship a driver for usable anyway.  CockroachDB, YugabyteDB and
@@ -173,17 +173,14 @@
 ;;
 ;; `history-name' is the ledger's default name.  It is a per-engine default
 ;; rather than a constant because every engine has its own idea of what a table
-;; may look like: MongoDB has collections, and a collection of migrations is
-;; spelled `_mutastructura_history' by convention (a leading underscore keeps it
-;; out of the way in `show collections' listings).
+;; may look like, so a name that suits one need not suit the next.
 (define-record-type <engine>
   (make-engine id family driver aliases migration-extensions default-port
                default-history-name resource-subdirectory description)
   engine?
   (id engine-id)
   (family engine-family)
-  ;; The name of the driver that speaks to this engine: a guile-dbi module for
-  ;; the relational family, `mongodb' (ours) for the document family.
+  ;; The name of the guile-dbi module that speaks to this engine.
   (driver engine-driver)
   (aliases engine-aliases)
   (migration-extensions engine-migration-extensions)
@@ -200,8 +197,8 @@
 ;; operations it needs, as procedures, so that `migrate', `info', `validate',
 ;; `baseline', `repair' and `clean' can be written once instead of once per
 ;; engine.  Every operation takes the session the runner's own `open' returned,
-;; and the session is opaque to everybody else -- which is what lets a MongoDB
-;; session and a guile-dbi handle live behind the same four commands.
+;; and the session is opaque to everybody else -- which is what lets a
+;; guile-dbi handle live behind the same commands.
 (define-record-type <runner>
   (make-runner family description open close! history ensure-history!
                record! forget! apply! begin! commit! rollback! clean!
@@ -273,16 +270,7 @@
                      3306
                      "migrations_history"
                      "mysql"
-                     "MySQL and MariaDB. Note: DDL here commits implicitly.")
-        (make-engine 'mongodb
-                     'document
-                     'mongodb
-                     '(mongo mongo-db)
-                     '(".json" ".js.json")
-                     27017
-                     "_mutastructura_history"
-                     "mongodb"
-                     "MongoDB. Migrations are JSON command documents, not SQL.")))
+                     "MySQL and MariaDB. Note: DDL here commits implicitly.")))
 
 (define (find-engine name)
   "Return the engine NAME denotes, or #f.
@@ -556,7 +544,6 @@ sqlite3:///var/lib/app.db
 sqlite3://./local.db
 postgresql://alice:secret@db.example.net:5432/appdb
 mysql://alice:secret@127.0.0.1:3306/appdb
-mongodb://alice:secret@127.0.0.1:27017/appdb?authSource=admin
 @end example
 
 A string whose scheme is not a known engine is taken at face value: the result
@@ -570,12 +557,6 @@ That form cannot escape a colon, so a user, password or database name containing
 one is rejected with an explanation rather than silently truncated."
   (let ((scheme (scheme-of url)))
     (cond
-      ((and scheme (string-prefix? "mongodb+srv" scheme))
-       (raise-exception
-        (make-exception-with-message
-         "mongodb+srv:// needs a DNS SRV lookup, which mutastructura does not do.
-   Resolve the SRV record yourself and pass the resulting host:port or a full
-   mongodb:// URL.")))
       ((and scheme (find-engine scheme))
        (let* ((rest (substring url (+ (string-length scheme) 1)))
               ;; Strip the `//' of an authority-based URL; tolerate its absence
@@ -600,31 +581,19 @@ one is rejected with an explanation rather than silently truncated."
                     (database (and path (trim-slash path))))
                (receive (user password host port)
                    (split-authority authority)
-                 (cond
-                   ((eq? (engine-id engine*) 'mongodb)
-                    (make-connection-spec engine* url
-                                          (or (and database
-                                                   (not (string=? database ""))
-                                                   database)
-                                              (assoc-ref params "authSource")
-                                              "admin")
-                                          (or host (assoc-ref params "host"))
-                                          (and port (string->number port))
-                                          user password params url))
-                   (else
-                    (let* ((with-socket (assoc-ref params "socket"))
-                           (with-host (assoc-ref params "host"))
-                           (host* (if (or (not host) (string=? host ""))
-                                      with-host host))
-                           (port* (and port (string->number port)))
-                           (connection (dbi-connection-string engine*
-                                                              user password
-                                                              database
-                                                              host* port*
-                                                              with-socket)))
-                      (make-connection-spec engine* connection database host*
-                                            port* user password params
-                                            url)))))))))
+                 (let* ((with-socket (assoc-ref params "socket"))
+                        (with-host (assoc-ref params "host"))
+                        (host* (if (or (not host) (string=? host ""))
+                                   with-host host))
+                        (port* (and port (string->number port)))
+                        (connection (dbi-connection-string engine*
+                                                           user password
+                                                           database
+                                                           host* port*
+                                                           with-socket)))
+                   (make-connection-spec engine* connection database host*
+                                         port* user password params
+                                         url)))))))
       (else (make-connection-spec engine url #f #f #f #f #f '() url)))))
 
 ;;; ============================================================================
@@ -649,8 +618,7 @@ syntax SQL itself cannot forgive."
 
 ;; Longest first: `.repeatable.sql' has to be tried before `.sql'.
 (define migration-suffixes
-  '(".repeatable.sql" ".repeatable.json" ".undo.sql" ".undo.json" ".sql"
-    ".json"))
+  '(".repeatable.sql" ".undo.sql" ".sql"))
 
 (define (basename-without-extension name)
   "NAME with its migration extension and repeatable/undo marker removed.
@@ -767,13 +735,11 @@ when it does not use the `R__' prefix, and `.undo.sql' marks a rollback script."
 
 (define (repeatable-name? name)
   "Whether NAME marks a repeatable migration."
-  (or (string-suffix? ".repeatable.sql" name)
-      (string-suffix? ".repeatable.json" name)))
+  (string-suffix? ".repeatable.sql" name))
 
 (define (undo-name? name)
   "Whether NAME marks an undo (rollback) script."
-  (or (string-suffix? ".undo.sql" name)
-      (string-suffix? ".undo.json" name)))
+  (string-suffix? ".undo.sql" name))
 
 (define (migration-name file) (assq-ref file 'name))
 (define (migration-path file) (assq-ref file 'path))
@@ -966,9 +932,8 @@ opens with a comment would otherwise be reported as its comment; anything past
 ;;; 6. The ledger
 ;;; ============================================================================
 
-;; A row of the history table, normalised across engines: no matter whether the
-;; ledger came back as a SQL result set or as MongoDB documents, the rest of the
-;; program sees these keys.
+;; A row of the history table, normalised across engines: however a driver
+;; answered, the rest of the program sees these keys.
 (define (history-entry? x)
   (and (list? x)
        (assq 'name x)))

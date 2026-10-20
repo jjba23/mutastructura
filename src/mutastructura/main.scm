@@ -22,7 +22,7 @@
 ;; It decides nothing about a database.  Which engine was asked for, what a
 ;; connection looks like and what a migration file is all come from the core;
 ;; what the ledger says and how a migration runs come from the runner the
-;; engine's family selects.  So `--database mongodb' and `--database
+;; engine's family selects.  So `--database mariadb' and `--database
 ;; postgresql' take the same path through this file, and adding an engine of a
 ;; family that already exists is a line in the registry rather than a branch
 ;; here.
@@ -215,11 +215,11 @@ does not run a statement."
 (define (connection-spec-of connection engine)
   "The connection spec for CONNECTION, reached as ENGINE.
 
-A URL -- `postgresql://user:pass@host/db', `sqlite3:///var/lib/app.db',
-`mongodb://host:27017/app' -- is parsed into its parts, and a URL for another
-engine than the one asked for is refused rather than silently ignored.  Anything
-else is taken at face value as the engine's own connection string, which is what
-guile-dbi's `user:pass:db:tcp:host:port' is."
+A URL -- `postgresql://user:pass@host/db', `sqlite3:///var/lib/app.db' -- is
+parsed into its parts, and a URL for another engine than the one asked for is
+refused rather than silently ignored.  Anything else is taken at face value as
+the engine's own connection string, which is what guile-dbi's
+`user:pass:db:tcp:host:port' is."
   (let ((spec (parse-connection-url connection #:engine engine)))
     (let ((url-engine (and (connection-spec-url spec)
                            (string-index connection #\:)
@@ -438,8 +438,8 @@ them, the run skips them, and the message is the reminder."
   "Report what APPLICABLE would run: its statements, placeholders substituted.
 
 The statements are read through the runner, not guessed at here, so a dry run
-shows the same statements -- multi-line bodies, delimiters, JSON command
-documents -- that a real run would send."
+shows the same statements -- multi-line bodies and delimiters included -- that a
+real run would send."
   (format #t "DRY RUN: what would be run, statement by statement:~%")
   (for-each
    (lambda (migration)
@@ -452,20 +452,13 @@ documents -- that a real run would send."
                (length statements)
                (if (= 1 (length statements)) "" "s"))
        (for-each (lambda (statement)
-                   (let ((text (or (assq-ref statement 'sql)
-                                   (assq-ref statement 'json)
-                                   "")))
+                   (let ((text (or (assq-ref statement 'sql) "")))
                      (format #t "      [~a] ~a~%"
-                             (or (assq-ref statement 'line)
-                                 (assq-ref statement 'position)
-                                 0)
-                             ;; A SQL statement is recognised by its first line;
-                             ;; a MongoDB command document is recognised by the
-                             ;; command it is, because its first line is `{'.
+                             (or (assq-ref statement 'line) 0)
+                             ;; A SQL statement is recognised by its first line.
                              (if verbose?
                                  text
-                                 (or (assq-ref statement 'command)
-                                     (first-line text))))))
+                                 (first-line text)))))
                  statements)))
    applicable))
 

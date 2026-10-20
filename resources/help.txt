@@ -28,21 +28,19 @@ OPTIONS:
         Display this help message and exit.
     -d, --database
         The engine you are targeting: sqlite3, postgresql, cockroachdb,
-        mysql (or mariadb) and mongodb, plus the aliases each accepts
-        (pg, psql, crdb, percona, mongo, timescaledb, yugabyte, ...).
+        mysql (or mariadb), plus the aliases each accepts
+        (pg, psql, crdb, percona, timescaledb, yugabyte, ...).
     -c, --connection
         A URL, or the driver's own connection string. A URL looks like:
           sqlite3:///var/lib/app.db
           postgresql://alice:secret@db.example.net:5432/appdb
           mysql://alice:secret@127.0.0.1:3306/appdb
-          mongodb://alice:secret@127.0.0.1:27017/appdb?authSource=admin
         Anything else is taken as the engine's connection string, which is
         guile-dbi's own user:pass:db:tcp:host:port form.
     -m, --migrations
-        The path to your migrations directory: *.sql files for the SQL
-        engines, *.json command documents for MongoDB. A file named
-        *.repeatable.sql (or *.repeatable.json) runs again whenever its
-        contents change; the rest run once, in order.
+        The path to your migrations directory: *.sql files. A file named
+        *.repeatable.sql runs again whenever its contents change; the rest
+        run once, in order.
         Read by migrate and status; clean does not need it.
     --placeholder key=value
         Substitute ${key} with value in every migration read during this run.

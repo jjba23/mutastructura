@@ -1,6 +1,0 @@
-{
-  "insert": "users",
-  "documents": [
-    {"name": "${user}", "age": 36}
-  ]
-}

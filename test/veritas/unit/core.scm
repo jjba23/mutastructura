@@ -79,9 +79,6 @@
 ;; versioned and one repeatable.
 (define examples "migrations/lucidplan")
 
-;; Another one, discovered by a different engine's extensions.
-(define json-examples "test/fixtures/mongodb")
-
 (define init-file (string-append examples "/2026-03-31_20:24:00_init.sql"))
 (define seed-file (string-append examples
                                   "/2026-04-01_21:54:00_test.repeatable.sql"))
@@ -137,34 +134,24 @@
                (assert-equal #:expect 26257
                              #:got (engine-default-port (find-engine 'crdb))
                              #:name "CockroachDB's port")
-               (assert-equal #:expect 27017
-                             #:got (engine-default-port (find-engine 'mongo))
-                             #:name "MongoDB's port")
                (assert-equal #:expect 0
                              #:got (engine-default-port (find-engine 'sqlite3))
                              #:name "and SQLite has none")
                (assert-equal #:expect "migrations_history"
                              #:got (engine-default-history-name
                                     (find-engine 'sqlite3))
-                             #:name "the SQL ledger's default name")
-               (assert-equal #:expect "_mutastructura_history"
-                             #:got (engine-default-history-name
-                                    (find-engine 'mongodb))
-                             #:name "and the document ledger's, which cannot clash"))
-         (test "a document engine is not a relational one"
+                             #:name "the SQL ledger's default name"))
+         (test "every engine is a relational one"
                #:shuffle? #f
                (assert-equal #:expect 'relational
                              #:got (engine-family (find-engine 'sqlite3))
                              #:name "SQLite is relational")
-               (assert-equal #:expect 'document
-                             #:got (engine-family (find-engine 'mongodb))
-                             #:name "MongoDB is document")
-               (assert-equal #:expect #f
-                             #:got (relational-engine? (find-engine 'mongodb))
-                             #:name "the question the core asks")
+               (assert-equal #:expect 'relational
+                             #:got (engine-family (find-engine 'postgres))
+                             #:name "and so is PostgreSQL")
                (assert-equal #:expect #t
                              #:got (relational-engine? (find-engine 'sqlite3))
-                             #:name "and its answer"))
+                             #:name "which is what the core asks"))
          (test "a database reached through another driver keeps its own identity"
                #:shuffle? #f
                ;; CockroachDB speaks PostgreSQL's protocol, and `info' has to say
@@ -178,16 +165,16 @@
                (assert-equal #:expect "mysql"
                              #:got (parse-db-type 'mariadb)
                              #:name "and MariaDB by the MySQL one"))
-         (test "each engine says which files are its migrations"
+         (test "every engine takes SQL migration files"
                #:shuffle? #f
                (assert-equal #:expect '(".sql")
                              #:got (engine-migration-extensions
                                     (find-engine 'postgres))
-                             #:name "SQL for the relational engines")
-               (assert-equal #:expect '(".json" ".js.json")
+                             #:name "SQL for PostgreSQL")
+               (assert-equal #:expect '(".sql" ".sqlite.sql")
                              #:got (engine-migration-extensions
-                                    (find-engine 'mongodb))
-                             #:name "JSON command documents for MongoDB"))
+                                    (find-engine 'sqlite3))
+                             #:name "and for SQLite, which also knows its own suffix"))
          (test "an unknown name is refused, naming the ones that exist"
                #:shuffle? #f
                ;; A typo in a command line is the commonest failure this tool
@@ -199,12 +186,12 @@
                                                (lambda () (parse-engine 'nope)))
                                               (list "UNKNOWN DATABASE TYPE: nope"
                                                     "postgresql"
-                                                    "mongodb"))
+                                                    "sqlite3"))
                              #:name "and the error says what there is instead"))
          (test "the engines are listed once each"
                #:shuffle? #f
                (assert-equal #:expect '("sqlite3" "postgresql" "cockroachdb"
-                                        "mysql" "mongodb")
+                                        "mysql")
                              #:got (supported-engine-ids)
                              #:name "in the order help lists them"))))
 
@@ -281,23 +268,6 @@
                              #:got (connection-spec-connection
                                     (spec-of "sqlite3://./local.db"))
                              #:name "a relative path stays relative"))
-         (test "a MongoDB URL keeps its parameters"
-               #:shuffle? #f
-               (let ((spec (spec-of "mongodb://alice:secret@127.0.0.1:27017/appdb?authSource=admin")))
-                 (assert-equal #:expect "mongodb"
-                               #:got (engine-id (connection-spec-engine spec))
-                               #:name "the engine")
-                 (assert-equal #:expect "appdb"
-                               #:got (connection-spec-database spec)
-                               #:name "the database")
-                 (assert-equal #:expect "admin"
-                               #:got (assoc-ref (connection-spec-options spec)
-                                                "authSource")
-                               #:name "and the parameter it was given"))
-               (assert-equal #:expect "admin"
-                             #:got (connection-spec-database
-                                    (spec-of "mongodb://127.0.0.1:27017?authSource=admin"))
-                             #:name "a URL with no path is the auth source"))
          (test "a parameter is percent-decoded"
                #:shuffle? #f
                (assert-equal #:expect "a b"
@@ -407,14 +377,10 @@
                              #:got (truth (migration-file?
                                            (find-engine 'postgres) "001_init.json"))
                              #:name "and not JSON")
-               (assert-equal #:expect #t
-                             #:got (truth (migration-file?
-                                           (find-engine 'mongodb) "001_users.json"))
-                             #:name "JSON for MongoDB")
                (assert-equal #:expect #f
                              #:got (truth (migration-file?
-                                           (find-engine 'mongodb) "notes.txt"))
-                             #:name "and neither engine takes a stray note"))
+                                           (find-engine 'sqlite3) "notes.txt"))
+                             #:name "nor does an engine take a stray note"))
          (test "a file's checksum is its content's"
                #:shuffle? #f
                ;; What makes an edited migration that was already applied a
@@ -445,14 +411,7 @@
                  (assert-equal #:expect '("2026-03-31_20:24:00_init.sql"
                                           "2026-04-01_21:54:00_test.repeatable.sql")
                                #:got (map migration-name found)
-                               #:name "the SQL directory, in order"))
-               (assert-equal #:expect '("2026-01-01_09:00:00_seed.repeatable.json"
-                                        "2026-01-02_10:00:00_users.json")
-                             #:got (map migration-name
-                                       (scandir-for-migrations
-                                        json-examples
-                                        #:engine (find-engine 'mongodb)))
-                             #:name "and the JSON one, by its own extensions"))
+                               #:name "the SQL directory, in order")))
          (test "a directory that is not there is refused"
                #:shuffle? #f
                ;; Rather than silently finding nothing and reporting success.
@@ -541,8 +500,8 @@
                              #:name "and neither is an alist without a name"))
          (test "a kind is read whether it is a symbol, a string or missing"
                #:shuffle? #f
-               ;; Two back ends answer differently: the SQL one stores a string
-               ;; in a column, the document one a string in a field.
+               ;; The ledger stores a string, but a driver may answer with the
+               ;; symbol this program wrote.
                (assert-equal #:expect 'versioned
                              #:got (history-entry-kind (entry "a.sql" "abc"))
                              #:name "the symbol the runner writes")
@@ -574,8 +533,8 @@
                              #:name "an explicit #f is a failure"))
          (test "a time is read from either column name"
                #:shuffle? #f
-               ;; The SQL ledger stamps `installed_on', the document one reads
-               ;; the same field, and an older ledger may call it `applied_at'.
+               ;; The ledger stamps `installed_on', and an older ledger may
+               ;; call the same field `applied_at'.
                (assert-equal #:expect 1791981743651
                              #:got (history-entry-installed-on
                                     (entry "a.sql" "abc"))

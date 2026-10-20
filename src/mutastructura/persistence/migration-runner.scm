@@ -48,10 +48,9 @@
   #:use-module (mutastructura persistence util)
   #:use-module (mutastructura persistence dialect)
   #:use-module (mutastructura persistence sql-parser)
-  ;; As with the document runner next door, the operations are exported rather
-  ;; than reached through the vtable alone: a test wants to drive one of them
-  ;; against a real database, and a caller that has a session already wants the
-  ;; rest of the ledger's verbs.
+  ;; The operations are exported rather than reached through the vtable alone: a
+  ;; test wants to drive one of them against a real database, and a caller that
+  ;; has a session already wants the rest of the ledger's verbs.
   #:export (sql-runner
             sql-session?
             sql-session-engine
