@@ -1,0 +1,99 @@
+{
+  "nodes": {
+    "guile-dbd-mysql-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792677199,
+        "narHash": "sha256-rM1jrr6uopjOBQVqrTB3k33uzwyF+5Ae/J0+A1AOtkk=",
+        "owner": "jjba23",
+        "repo": "nixpkgs",
+        "rev": "021115a53fd689ca01cfd692bf071d0ef5ced133",
+        "type": "github"
+      },
+      "original": {
+        "owner": "jjba23",
+        "ref": "guile-dbd-mysql-init",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "guile-dbd-postgresql-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792677199,
+        "narHash": "sha256-ocI2m6QEwy9E3Gzz7kIp1YnIApc+C/XeHtkUMhbFdzY=",
+        "owner": "jjba23",
+        "repo": "nixpkgs",
+        "rev": "2f272ae0745e04157decb67621064e578bdbe0e2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "jjba23",
+        "ref": "guile-dbd-postgresql-init",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "guile-dbd-sqlite3-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792677199,
+        "narHash": "sha256-a8VMregtlvfYsOhcEtHXNilZ/b7PoKbkf7okg8zpJME=",
+        "owner": "jjba23",
+        "repo": "nixpkgs",
+        "rev": "5f14deca86562fd04bc1c07f451491cff4e83501",
+        "type": "github"
+      },
+      "original": {
+        "owner": "jjba23",
+        "ref": "guile-dbd-sqlite3-init",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "guile-dbi-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792677199,
+        "narHash": "sha256-GHaK+jSAwgK881A3ZKfzxKDAQj1xfvkqSuUvs6VQHUM=",
+        "owner": "jjba23",
+        "repo": "nixpkgs",
+        "rev": "db94ab2f3c4c1086dba121009f213fc5a720e635",
+        "type": "github"
+      },
+      "original": {
+        "owner": "jjba23",
+        "ref": "guile-dbi-init",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1792502884,
+        "narHash": "sha256-IoNisKcGbUjdd45qCqywGMCYmZ5EnkxezvLII0FWwNA=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "02c087f3fe673c9e317f206a627cb6b910336dbe",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "guile-dbd-mysql-src": "guile-dbd-mysql-src",
+        "guile-dbd-postgresql-src": "guile-dbd-postgresql-src",
+        "guile-dbd-sqlite3-src": "guile-dbd-sqlite3-src",
+        "guile-dbi-src": "guile-dbi-src",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
