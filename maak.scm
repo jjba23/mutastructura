@@ -20,8 +20,6 @@
   ;; The container helpers are imported under a prefix because the tasks
   ;; below are named the way maak exposes them on the command line.
   #:use-module ((maak container) #:prefix ct:)
-  #:use-module (ice-9 textual-ports)
-  #:use-module (ice-9 popen)
   #:declarative? #t)
 
 ;; ====== Maak constants ======
@@ -43,18 +41,11 @@
 (define hot-reload-file-types
   '(scm))
 
-;; ====== Maak abstractions ======
-
-(define (syscall-with-output cmd)
-  (let* ((process (open-input-pipe cmd))
-         (process-output (get-string-all process)))
-    (close-pipe process) process-output))
-
 ;; ====== Maak tasks ======
 
 (define (help)
   "Display program help screen."
-  (time-machine-program-shell '("mutastructura --help")))
+  (time-machine-program-shell (list "mutastructura" "--help")))
 
 (define (default)
   "Default task to run, call program's help."
@@ -62,33 +53,41 @@
 
 (define (fmt)
   "Format Scheme source code files according to the Guix style guide."
-  ($ '("find . -maxdepth 8 -name '*.scm'" "-type f -exec guix style -f {} \\;")
-     #:verbose? #t))
+  ;; The task named `run' below shadows the helper of the same name, so the
+  ;; helper is reached through the module it comes from.
+  ((@ (maak maak) run)
+   (list "find" "." "-maxdepth" "8" "-name" "*.scm" "-type" "f"
+         "-exec" "guix" "style" "-f" "{}" ";")
+   #:verbose? #t))
 
 (define (test)
   "Run the unit test suite with Veritas."
   ;; `-L ./src' is the program, `-L ./test' is where the spec files live as
   ;; modules, and `-L .' is where the shared test helpers live.  The runner
-  ;; scans ./ for test/veritas/unit by itself.
-  ($ (list "VERITAS_TEST_TYPE=unit" "VERITAS_RUN_BENCHMARKS=false"
-           "guix shell -m manifest.scm --"
-           "guile -L ./src -L ./test -L ."
-           "-c '((@ (veritas runner) run-tests))'")
-     #:verbose? #t))
+  ;; scans ./ for test/veritas/unit by itself.  The Veritas variables go
+  ;; through `#:env', which sets them for the command inside the shell.
+  (manifest-shell (list "guile" "-L" "./src" "-L" "./test" "-L" "."
+                        "-c" "'((@ (veritas runner) run-tests))'")
+                  #:env '("VERITAS_TEST_TYPE=unit"
+                          "VERITAS_RUN_BENCHMARKS=false")
+                  #:verbose? #t))
 
 (define (repl)
   "Development REPL."
-  (manifest-shell '("guile -L ./src"
-                    "-c '((@ (ares server) run-nrepl-server))'")))
+  (manifest-shell (list "guile" "-L" "./src"
+                        "-c" "'((@ (ares server) run-nrepl-server))'")))
 
 (define (docs)
   "Generate technical API documentation for Maak."
   (delete-file-recursively "doc")
-  (time-machine-manifest-shell (list (~ "documenta api ./src/~a && "
-                                        project-name)
-                                     (~ "texi2any -v --html --css-ref=~a"
-                                        api-docs-css-url)
-                                     "./doc/api/index.texi"))
+  ;; Documenta writes ./doc/api/index.texi and texi2any renders it; two calls,
+  ;; so a failure names the step that failed.
+  (time-machine-manifest-shell (list "documenta" "api"
+                                     (~ "./src/~a" project-name)))
+  (time-machine-manifest-shell
+   (list "texi2any" "-v" "--html"
+         (~ "--css-ref=~a" api-docs-css-url)
+         "./doc/api/index.texi"))
   (mv "./index" "./doc/api-dist"))
 
 (define (deploy)
@@ -96,50 +95,66 @@
   ;; Deploy API docs
   (remkdir-p (~ "~a/api-docs/~a" deploy-dir project-name))
   (mv "doc/api-dist/*"
-      (~ "~a/api-docs/~a" deploy-dir project-name))
+      (~ "~a/api-docs/~a" deploy-dir project-name)
+      #:expand? #t)
   (delete-file-recursively "doc"))
 
 (define (package-docker)
-  "Create a Docker image for Mutastructura."
-  (time-machine-manifest-shell '("guix pack --file=./guix.scm"
-                                 "--format=docker" "--image-tag=mutastructura"
-                                 "-S /bin=bin"
-                                 "bash coreutils util-linux-with-udev guile > .docker-tag")
-                               #:verbose? #t)
-  ($ '("cat .docker-tag | xargs podman load --input"))
-  (delete-file-recursively ".docker-tag"))
+  "Build the container image for mutastructura."
+  ;; `guix pack --format=docker' prints the name of the tarball it wrote, so
+  ;; that name is read as a value and handed to the engine, rather than
+  ;; round-tripped through a file and a shell pipeline.
+  (let* ((pack-argv (list "guix" "time-machine" "--channels=channels.scm" "--"
+                          "shell" "-m" "manifest.scm" "--"
+                          "guix" "pack" "--file=./guix.scm" "--format=docker"
+                          (~ "--image-tag=~a" project-name)
+                          "-S" "/bin=bin"
+                          "bash" "coreutils" "util-linux-with-udev" "guile"))
+         (tarball (string-trim-both
+                   (capture (string-join (map shell-quote pack-argv) " ")))))
+    (if (string=? tarball "")
+        ;; Dry run, where nothing was packed and no name came back.
+        (log-info "No tarball was read, so nothing is loaded into the engine.")
+        (ct:container (list "load" "--input" tarball) #:verbose? #t))))
 
 (define (push-docker-latest)
   "Push the latest locally generated Docker image to Dockerhub."
-  ($ (list (~ "podman push localhost/~a:latest" project-name)
-           (~ "docker.io/jjba23/~a:latest" project-name))
-     #:verbose? #t))
+  (ct:container (list "push"
+                      (~ "localhost/~a:latest" project-name)
+                      (~ "docker.io/jjba23/~a:latest" project-name))
+                #:verbose? #t))
 
 (define (push-docker-tag)
   "Push the locally generated Docker image to Dockerhub."
   (git-fetch "--all")
-  (let* ((latest-tag (syscall-with-output "git describe --tags --abbrev=0")))
-    ($ (list (~ "podman push localhost/~a:latest" project-name)
-             (~ "docker.io/jjba23/~a:~a" project-name latest-tag))
-       #:verbose? #t)))
+  (let ((latest-tag (git-describe-tag)))
+    (ct:container (list "push"
+                        (~ "localhost/~a:latest" project-name)
+                        ;; A dry run reads no tag, so the line shows a
+                        ;; placeholder rather than a dangling colon.
+                        (~ "docker.io/jjba23/~a:~a" project-name
+                           (if (string=? latest-tag "") "<tag>" latest-tag)))
+                  #:verbose? #t)))
 
 (define (dev-run)
   "Run mutastructura (dev)."
   ;; (delete-file-recursively some-test-db)
-  (time-machine-manifest-shell (list
-                                "guile -L ./src -c '((@(mutastructura main) main))'"
-                                (~ "--connection ~a" some-test-db)
-                                "--database sqlite3"
-                                "--migrations ./migrations/lucidplan"
-                                "--resources ./resources")
-                               #:verbose? #t))
+  (time-machine-manifest-shell
+   (list "guile" "-L" "./src"
+         "-c" "'((@(mutastructura main) main))'"
+         "--connection" some-test-db
+         "--database" "sqlite3"
+         "--migrations" "./migrations/lucidplan"
+         "--resources" "./resources")
+   #:verbose? #t))
 
 (define (run)
   "Run mutastructura."
   ;; (delete-file-recursively some-test-db)
-  (time-machine-program-shell (list "mutastructura --database sqlite3"
-                                    (~ "--connection ~a " some-test-db)
-                                    "--migrations ./migrations/lucidplan")
+  (time-machine-program-shell (list "mutastructura"
+                                    "--database" "sqlite3"
+                                    "--connection" some-test-db
+                                    "--migrations" "./migrations/lucidplan")
                               #:verbose? #t))
 
 ;; ====== Container tasks ======
