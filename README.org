@@ -21,6 +21,9 @@ No ORM. No model layer. No daemon. Just SQL, a ledger, and honest answers.
 
 
 * See it in action
+:PROPERTIES:
+:CUSTOM_ID: see-it-in-action
+:END:
 
 #+CAPTION: A real SQLite session: plan, migrate, validate, roll back one step, walk back as far as undo scripts allow, then refuse honestly at a migration that has none.
 #+ATTR_HTML: :width 100% :alt Animated terminal demo of mutastructura running status, migrate, validate and rollback.
@@ -29,6 +32,9 @@ No ORM. No model layer. No daemon. Just SQL, a ledger, and honest answers.
 Prefer a still? [[file:assets/demo-poster.png][Open the poster image]].
 
 * Overview (PROLOGUS)
+:PROPERTIES:
+:CUSTOM_ID: overview-prologus
+:END:
 
 Mutastructura is a schema migration tool for people who already know SQL and
 would like to keep it that way.
@@ -49,6 +55,9 @@ compatible databases (*CockroachDB*, *YugabyteDB*, *TimescaleDB*, Citus and
 Aurora PostgreSQL). Write your migrations in your native database dialect.
 
 ** The name
+:PROPERTIES:
+:CUSTOM_ID: the-name
+:END:
 
 Mutastructura is *mutare* (to change) and *structura* (structure): the changed
 structure, or the act of changing it. The motto is the house style -- come, see,
@@ -62,6 +71,9 @@ purpose.
 #+end_example
 
 ** Who is it for?
+:PROPERTIES:
+:CUSTOM_ID: who-is-it-for
+:END:
 
 - *SQL-first teams* who want the useful parts of Flyway's model -- versioned
   files, repeatables, checksums and placeholders -- without a JVM or a
@@ -74,6 +86,9 @@ purpose.
   deliberate rather than a wildcard.
 
 ** Design principles
+:PROPERTIES:
+:CUSTOM_ID: design-principles
+:END:
 
 - *SQL is the source of truth.* Mutastructura never generates schema changes
   from a model; you write the SQL your database actually understands.
@@ -89,6 +104,9 @@ purpose.
   the container are all declared in Guix.
 
 * Features (VIRTUTES)
+:PROPERTIES:
+:CUSTOM_ID: features-virtutes
+:END:
 
 - *Six focused commands* (plus ~help~): ~migrate~, ~status~, ~validate~,
   ~rollback~, ~repair~ and ~clean~. Each is the same plan read in a different
@@ -130,6 +148,9 @@ purpose.
   machines that do not speak Guix.
 
 * Requirements (REQUISITA)
+:PROPERTIES:
+:CUSTOM_ID: requirements-requisita
+:END:
 
 | Requirement             | Why                                                            |
 |-------------------------+----------------------------------------------------------------|
@@ -144,9 +165,90 @@ purpose.
 Guix users get all of the Guile requirements from [[file:manifest.scm][manifest.scm]] or
 [[file:guix.scm][guix.scm]]; there is nothing else to install.
 
+* Ways to install
+:PROPERTIES:
+:CUSTOM_ID: ways-to-install
+:END:
+
+/Four routes to the same 0.9.2, from the most automated to the most manual.  They all build the tag this README documents./
+
+** From the Guix channel
+:PROPERTIES:
+:CUSTOM_ID: from-the-guix-channel
+:END:
+*GNU Guix* is the functional package manager this project is developed with: a build is a pure function of its inputs, so the same recipe gives the same result everywhere, and an upgrade that goes wrong can be rolled back.
+
+The jointhefreeworld channel carries ~mutastructura~ at 0.9.2, so a checkout of the channel is enough — no package definition to write:
+
+#+begin_src shell
+git clone https://codeberg.org/jjba23/guix-jointhefreeworld.git
+guix install -L ./guix-jointhefreeworld mutastructura
+#+end_src
+
+Add the channel to ~$HOME/.config/guix/channels.scm~ (the channel's README has the four lines) and a plain ~guix install mutastructura~ keeps working on every later ~guix pull~.
+
+** From the Nix flake
+:PROPERTIES:
+:CUSTOM_ID: from-the-nix-flake
+:END:
+*Nix* offers the same declarative, reproducible model with its own language, its own store and a binary cache, and it is a natural fit if the rest of your machine is already described in Nix.
+
+The jointhefreeworld flake builds this project with this repository's own expression, so the package cannot drift from the source:
+
+#+begin_src shell
+nix build github:jjba23/nix-jointhefreeworld#mutastructura
+#+end_src
+
+The same attribute is available as an overlay, so ~pkgs.jointhefreeworld.mutastructura~ works inside a NixOS or home-manager configuration too.
+
+** As a container image
+:PROPERTIES:
+:CUSTOM_ID: as-a-container-image
+:END:
+*Podman or Docker* is the route that puts nothing on the host: the ~Dockerfile~ in this repository builds the project in a builder stage and copies only what it installed into a runtime stage, so the image is small and the host keeps its own toolchain untouched.
+
+#+begin_src shell
+podman build -t mutastructura .   # docker build -t mutastructura . also works
+podman run --rm -it mutastructura
+#+end_src
+
+The image's entry point is Guile, with mutastructura on its load path, which makes it useful for a quick try and for reproducing a bug on a clean system.
+
+** As a distribution package
+:PROPERTIES:
+:CUSTOM_ID: as-a-distribution-package
+:END:
+*Debian, openSUSE and Arch* each get the project through their own package manager.  Packaging lives in this repository under ~packaging/~ and is pinned to the same release tag, so the recipes and the sources they build are versioned together.
+
+None of the three archives ships mutastructura yet, so these are recipes to build rather than packages to install from a mirror:
+
+| Distribution   | Package         | How to build it                                                                     |
+|----------------+-----------------+-------------------------------------------------------------------------------------|
+| Debian, Ubuntu | ~mutastructura~ | copy ~packaging/debian~ to the repository root, then ~dpkg-buildpackage -us -uc -b~ |
+| openSUSE       | ~mutastructura~ | ~osc build~ with ~packaging/opensuse~                                               |
+| Arch           | ~mutastructura~ | ~makepkg -si~ in ~packaging/arch~                                                   |
+
+Each recipe carries its own dependency list, so a missing library fails the build with its name rather than producing a package that cannot load.
+
+** Which one?
+:PROPERTIES:
+:CUSTOM_ID: which-one
+:END:
+- *Guix* if you want the toolchain the project is tested with, and the ability to roll back a bad upgrade.
+- *Nix* if the rest of your machine is already declarative; the flake pins nixpkgs and gives you a binary cache.
+- *Container* if you only want to try the release, or reproduce a report on a machine that has nothing installed.
+- *Distribution package* if you want the project managed by the same tool as the rest of your system, with its licence, manual page and launcher in the usual places.
+
+
 * Installation (INSTALLATIO)
+:PROPERTIES:
+:CUSTOM_ID: installation-installatio
+:END:
 
 ** With GNU Guix (recommended)
+:PROPERTIES:
+:CUSTOM_ID: with-gnu-guix-recommended
+:END:
 
 Clone the repository and install the package definition it carries:
 
@@ -192,6 +294,9 @@ guile -L ./src -c '((@(mutastructura main) main))' \
 #+end_src
 
 ** With Podman or Docker
+:PROPERTIES:
+:CUSTOM_ID: with-podman-or-docker
+:END:
 
 Mutastructura is published as a container image (compatible with Podman) on
 [[https://hub.docker.com/repository/docker/jjba23/mutastructura/general][Docker Hub]]:
@@ -208,6 +313,9 @@ You can also build the image yourself with ~guix pack~; see [[file:maak.scm][maa
 with ~podman load < mutastructura.tar.gz~.
 
 ** From source, without Guix
+:PROPERTIES:
+:CUSTOM_ID: from-source-without-guix
+:END:
 
 Clone the repository, install Guile 3.0, guile-dbi, the SQLite/PostgreSQL/MySQL
 DBI drivers and guile-gcrypt with your distribution's package manager, then run
@@ -231,6 +339,9 @@ and so on. No ~--command~ means ~migrate~, which is what the program did when
 migrating was all it did.
 
 * Quick start (PRIMA VIA)
+:PROPERTIES:
+:CUSTOM_ID: quick-start-prima-via
+:END:
 
 You can be migrating in under a minute. This example uses SQLite, so there is
 no server to start.
@@ -277,6 +388,9 @@ mutastructura validate -m ./migrations -c "$DATABASE_URL" -d postgresql
 #+end_src
 
 * Commands (IMPERIA)
+:PROPERTIES:
+:CUSTOM_ID: commands-imperia
+:END:
 
 The commands share one plan and one ledger; the first word on the command line
 selects the view. With no word at all, ~migrate~ runs.
@@ -292,6 +406,9 @@ selects the view. With no word at all, ~migrate~ runs.
 | ~help~     | Print the bundled help text (~--help~ / ~-h~)                     |
 
 ** ~migrate~
+:PROPERTIES:
+:CUSTOM_ID: migrate
+:END:
 
 Applies what is pending, in order. The run is one transaction where the engine
 has transactional DDL; a failure rolls the whole run back. On MySQL, where DDL
@@ -311,6 +428,9 @@ mutastructura migrate -m ./migrations -c ./app.db -d sqlite3 --out-of-order
 - ~--dry-run~ prints the plan and every statement, and changes nothing.
 
 ** ~status~
+:PROPERTIES:
+:CUSTOM_ID: status
+:END:
 
 Reports the ledger and the plan side by side: ~pending~, ~applied~, ~changed~,
 ~missing~, ~superseded~, ~beyond-target~, and the repeatable migration's own
@@ -322,6 +442,9 @@ mutastructura status -m ./migrations -c ./app.db -d sqlite3
 #+end_src
 
 ** ~validate~
+:PROPERTIES:
+:CUSTOM_ID: validate
+:END:
 
 The same report, with an exit status a CI pipeline can trust. It exits 0 when
 the ledger and the files agree, and 1 when a file changed after it was applied
@@ -332,6 +455,9 @@ mutastructura validate -m ./migrations -c "$DATABASE_URL" -d postgresql
 #+end_src
 
 ** ~rollback~
+:PROPERTIES:
+:CUSTOM_ID: rollback
+:END:
 
 Undoes applied migrations, newest first, with the ~*.undo.sql~ file that has the
 same version. See *Rolling back* below for the selection rules and the
@@ -345,6 +471,9 @@ mutastructura rollback -m ./migrations -c ./app.db -d sqlite3 --all --dry-run
 #+end_src
 
 ** ~repair~
+:PROPERTIES:
+:CUSTOM_ID: repair
+:END:
 
 Brings the ledger back into agreement with the files. A row that records a
 failure is forgotten, so the migration is attempted again. A migration whose
@@ -358,6 +487,9 @@ mutastructura repair -m ./migrations -c ./app.db -d sqlite3
 #+end_src
 
 ** ~clean~
+:PROPERTIES:
+:CUSTOM_ID: clean
+:END:
 
 Drops every table and view the catalogue reports in the current schema, the
 ledger included. It is intentionally blunt; use ~--dry-run~ first.
@@ -368,6 +500,9 @@ mutastructura clean -c ./app.db -d sqlite3
 #+end_src
 
 ** Exit status
+:PROPERTIES:
+:CUSTOM_ID: exit-status
+:END:
 
 | Status | Meaning                                                                 |
 |--------+-------------------------------------------------------------------------|
@@ -381,11 +516,17 @@ one deliberate exception: it exits 0 when it undid everything reversible and
 stopped at a named boundary.
 
 * Writing migrations (SCRIBA)
+:PROPERTIES:
+:CUSTOM_ID: writing-migrations-scriba
+:END:
 
 A migration is a SQL file whose name carries its version. Mutastructura
 recognises two naming conventions, and neither requires a configuration file.
 
 ** Naming and order
+:PROPERTIES:
+:CUSTOM_ID: naming-and-order
+:END:
 
 - *Mutastructura style:* ~YYYY-MM-DD_HH:MM:SS_description.sql~, ordered by file
   name. Example: ~2026-04-01_21:54:00_init.sql~.
@@ -405,6 +546,9 @@ recognises two naming conventions, and neither requires a configuration file.
   ~repair~ is how you accept it.
 
 ** Undo scripts and irreversible migrations
+:PROPERTIES:
+:CUSTOM_ID: undo-scripts-and-irreversible-migrations
+:END:
 
 Pair an undo with the migration it reverses by giving it the same name and
 ~.undo.sql~:
@@ -434,6 +578,9 @@ The directive blocks ~rollback~ even when an undo script exists. Override it
 deliberately with ~--allow-irreversible~.
 
 ** Placeholders
+:PROPERTIES:
+:CUSTOM_ID: placeholders
+:END:
 
 Substitute deployment-specific values with ~${key}~:
 
@@ -452,6 +599,9 @@ Repeat ~--placeholder~, or put the pairs in one comma-separated value. A
 own template syntax in a comment.
 
 ** What the SQL lexer understands
+:PROPERTIES:
+:CUSTOM_ID: what-the-sql-lexer-understands
+:END:
 
 Migrations are split into statements by a finite-state machine, not by
 searching for semicolons. It handles single-quoted strings with ~~''~~ escapes,
@@ -463,6 +613,9 @@ statement is reported with the line it starts on, so a failure says which line
 of which file failed.
 
 * Rolling back
+:PROPERTIES:
+:CUSTOM_ID: rolling-back
+:END:
 
 Not every migration can or should be reversed. Mutastructura treats that as a
 first-class fact rather than a footnote.
@@ -506,6 +659,9 @@ STOPPED BEFORE 2026-04-01_init.sql: no undo script.
 #+end_src
 
 * Configuration and options (OPTIONES)
+:PROPERTIES:
+:CUSTOM_ID: configuration-and-options-optiones
+:END:
 
 There is no configuration file to learn. Everything is a command-line option;
 the defaults are the safe ones.
@@ -528,6 +684,9 @@ the defaults are the safe ones.
 | ~-h~, ~--help~         | --                               | Show help and exit                                                       |
 
 ** Connection URLs
+:PROPERTIES:
+:CUSTOM_ID: connection-urls
+:END:
 
 #+begin_src shell
 sqlite3:///var/lib/app.db
@@ -543,6 +702,9 @@ password and database name cannot contain a colon -- that form cannot escape one
 -- so use the driver's own connection string there.
 
 ** Engines
+:PROPERTIES:
+:CUSTOM_ID: engines
+:END:
 
 | Engine id     | Aliases (examples)                                                    | Driver     |  Port | Transactional DDL | Migration lock                  |
 |---------------+-----------------------------------------------------------------------+------------+-------+-------------------+---------------------------------|
@@ -557,6 +719,9 @@ own default port and dialect quirks, and why adding a protocol-compatible
 database is a line in the engine registry rather than a branch in every command.
 
 * How it works (ARCHITECTURA)
+:PROPERTIES:
+:CUSTOM_ID: how-it-works-architectura
+:END:
 
 When invoked, Mutastructura:
 
@@ -574,6 +739,9 @@ plan, ~status~ and ~validate~ report it, ~rollback~ walks the inverse plan,
 ~repair~ reconciles it, and ~clean~ clears the schema.
 
 ** The migration dance
+:PROPERTIES:
+:CUSTOM_ID: the-migration-dance
+:END:
 
 Underneath the commands, every forward run follows the same small choreography:
 
@@ -590,6 +758,9 @@ its undo script, checks that the whole requested range is reversible, then runs
 the scripts newest-first and forgets each ledger row as its script succeeds.
 
 ** The imperative shell
+:PROPERTIES:
+:CUSTOM_ID: the-imperative-shell
+:END:
 
 ~(mutastructura main)~ is the commander. It owns everything that smells of the
 outside world: parsing arguments, opening the connection, reading the resources,
@@ -597,6 +768,9 @@ printing the report, and choosing the exit status. Keeping those side effects in
 one place is what lets the planner stay pure.
 
 ** The persistence layer
+:PROPERTIES:
+:CUSTOM_ID: the-persistence-layer
+:END:
 
 The database work lives behind the runner, over ~guile-dbi~. Its most important
 promise is the transaction: a forward run and its ledger rows are one atomic
@@ -607,6 +781,9 @@ the truth -- what ran stands -- rather than promising an atomicity the server
 does not offer.
 
 ** A functional core, an imperative shell
+:PROPERTIES:
+:CUSTOM_ID: a-functional-core-an-imperative-shell
+:END:
 
 | Module                                         | Responsibility                                                                                               |
 |------------------------------------------------+--------------------------------------------------------------------------------------------------------------|
@@ -623,6 +800,9 @@ returns the plan, which is why ~--dry-run~ and the unit tests can exercise the
 same decisions a real run makes.
 
 ** What each engine can promise
+:PROPERTIES:
+:CUSTOM_ID: what-each-engine-can-promise
+:END:
 
 | Engine              | Failed migration                                             | Lock                                            |
 |---------------------+--------------------------------------------------------------+-------------------------------------------------|
@@ -638,6 +818,9 @@ line that failed. It also reads the ledger's timestamp as text for the same
 reason: that driver abandons a row whose column type it does not know.
 
 ** The ledger
+:PROPERTIES:
+:CUSTOM_ID: the-ledger
+:END:
 
 One row per migration, in every engine, with the columns the runner discovers
 rather than assumes:
@@ -659,6 +842,9 @@ catalogue which ones exist and writes only those, so upgrading Mutastructura is
 a non-event.
 
 ** The SQL lexer
+:PROPERTIES:
+:CUSTOM_ID: the-sql-lexer
+:END:
 
 The lexer walks the file one character at a time and knows the quoting rules of
 the engines we speak to: strings, identifiers, comments, dollar quoting,
@@ -667,6 +853,9 @@ failed" into "line 47 of this file failed", and what prevents a semicolon inside
 a function body from cutting it in half.
 
 * Development and testing (LABOR)
+:PROPERTIES:
+:CUSTOM_ID: development-and-testing-labor
+:END:
 
 The project uses [[https://codeberg.org/jjba23/maak][Maak]] as its command runner
 and GNU Guix for a reproducible environment.
@@ -695,6 +884,9 @@ runner against a real SQLite database in ~/tmp~. When you fix a bug, add the cas
 that would have caught it -- the tests are the specification.
 
 ** Layout
+:PROPERTIES:
+:CUSTOM_ID: layout
+:END:
 
 #+begin_src text
 src/mutastructura/
@@ -715,6 +907,9 @@ ROADMAP.org                where the project is going
 #+end_src
 
 ** REPL: interactive workflow, developer power
+:PROPERTIES:
+:CUSTOM_ID: repl-interactive-workflow-developer-power
+:END:
 
 A REPL (Read-Eval-Print Loop) is an interactive environment connected to your
 console, running application, language compiler and more. Lisp dialects,
@@ -736,6 +931,9 @@ When the REPL is integrated into your editor, any line, selection or file can
 be evaluated with a keystroke. That is the workflow Arei and Sesman are for.
 
 ** On reproducibility: why GNU Guix?
+:PROPERTIES:
+:CUSTOM_ID: on-reproducibility-why-gnu-guix
+:END:
 
 A build should never fail because "it worked on my machine." Reliable software
 development requires explicit, bit-for-bit reproducibility and a functional
@@ -753,6 +951,9 @@ approach to package management.
   builds and system configurations.
 
 * Roadmap (VIA FUTURA)
+:PROPERTIES:
+:CUSTOM_ID: roadmap-via-futura
+:END:
 
 See [[file:ROADMAP.org][ROADMAP.org]] for a full comparison with Alembic, Django,
 Flyway, Liquibase and yoyo, and for the prioritised plan. The short version:
@@ -767,6 +968,9 @@ Flyway, Liquibase and yoyo, and for the prioritised plan. The short version:
   tools that own a model layer.
 
 * Contributing (CONTRIBUTIO)
+:PROPERTIES:
+:CUSTOM_ID: contributing-contributio
+:END:
 
 Contributions are warmly welcome -- code, documentation, bug reports, and
 questions all make the project better.
@@ -786,6 +990,9 @@ questions all make the project better.
   send the sentence you wish you had found.
 
 ** AI policy
+:PROPERTIES:
+:CUSTOM_ID: ai-policy
+:END:
 
 This project adheres to the
 [[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-ai-policy/index.html][jointhefreeworld AI policy]].
@@ -796,6 +1003,9 @@ human must stay in the loop. Autonomous AI agents that generate and submit pull
 requests are not welcome.
 
 ** Code of conduct
+:PROPERTIES:
+:CUSTOM_ID: code-of-conduct
+:END:
 
 This project follows the
 [[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-conduct/index.html][jointhefreeworld code of conduct]]:
@@ -803,6 +1013,9 @@ be inclusive, respectful and cooperative. We want a community where people can
 learn, disagree well, and build excellent free software together.
 
 * License (LICENTIA)
+:PROPERTIES:
+:CUSTOM_ID: license-licentia
+:END:
 
 Mutastructura and all of its source code are free software, licensed under the
 *GNU Affero General Public License v3 or newer*. See [[file:COPYING][COPYING]] or
