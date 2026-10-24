@@ -1,0 +1,99 @@
+# mutastructura
+
+# Copyright © 2026 Josep Bigorra <jjbigorra@gmail.com>
+
+# mutastructura is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Affero General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your
+# option) any later version.
+#
+# mutastructura is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License
+# for more details.
+#
+# You should have received a copy of the GNU Affero General Public License along
+# with mutastructura. If not, see <https://www.gnu.org/licenses/>.
+
+# Maintainer: Josep Bigorra <jjbigorra@gmail.com>
+pkgname=mutastructura
+pkgver=0.9.2
+pkgrel=1
+pkgdesc="Relational database schema migrations in Guile Scheme"
+arch=('any')
+url="https://codeberg.org/jjba23/mutastructura"
+license=('AGPL-3.0-or-later')
+
+depends=(
+  'guile'
+  'bash'
+  'coreutils'
+  'guile-gcrypt'
+  'guile-dbi'
+)
+
+makedepends=(
+  'guile'
+  'pkgconf'
+)
+
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('5e08169da626fae0de171800c651ef10bf677d6109fd21afdd7c46eb39b808d3')
+
+# Upstream reads resources from the generic share/resources; several of
+# these packages would clash there, so it moves under share/mutastructura/.
+
+# Guile looks for byte-compiled modules under the site-ccache directory,
+# which differs between distributions, so ask Guile's pkg-config file
+# instead of hard-coding a path.
+_site_dir() {
+  pkg-config --variable=sitedir guile-3.0 2>/dev/null \
+    || echo /usr/share/guile/site/3.0
+}
+
+_compiled_dir() {
+  pkg-config --variable=siteccachedir guile-3.0 2>/dev/null \
+    || echo /usr/lib/guile/3.0/site-ccache
+}
+
+build() {
+  cd "$srcdir/mutastructura"
+
+  # Byte-compile every module, mirroring the source tree under a staging
+  # directory that package() copies into the compiled site directory.
+  rm -rf "$srcdir/ccache"
+  mkdir -p "$srcdir/ccache/mutastructura"
+
+  while IFS= read -r scm_file; do
+    rel_path="${scm_file#src/}"
+    go_file="$srcdir/ccache/${rel_path%.scm}.go"
+    mkdir -p "$(dirname "$go_file")"
+    guild compile -L src -o "$go_file" "$scm_file"
+  done < <(find src/mutastructura -name '*.scm')
+}
+
+# Upstream's SQLite runner tests fail against guile-dbi 3.2.0, and Debian and openSUSE do not package guile-dbi; the suite is not run.
+# check() omitted.
+
+package() {
+  cd "$srcdir/mutastructura"
+
+  # The launcher resolves its modules and resources relative to its
+  # own prefix, so the installed layout below is what it expects.
+  install -Dm755 scripts/mutastructura "$pkgdir/usr/bin/mutastructura"
+  sed -i 's|share/resources|share/mutastructura/resources|g' "$pkgdir/usr/bin/mutastructura"
+
+  site_dir="$(_site_dir)"
+  install -d "$pkgdir${site_dir}/mutastructura"
+  cp -r src/mutastructura/. "$pkgdir${site_dir}/mutastructura/"
+
+  ccache_dir="$(_compiled_dir)"
+  install -d "$pkgdir${ccache_dir}/mutastructura"
+  cp -r "$srcdir/ccache/mutastructura/." "$pkgdir${ccache_dir}/mutastructura/"
+
+  install -d "$pkgdir/usr/share/mutastructura/resources"
+  cp -r resources/. "$pkgdir/usr/share/mutastructura/resources/"
+
+  install -Dm644 COPYING "$pkgdir/usr/share/licenses/$pkgname/COPYING"
+  install -Dm644 README.org "$pkgdir/usr/share/doc/$pkgname/README.org"
+}

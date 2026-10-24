@@ -138,3 +138,13 @@
                                     (~ "--connection ~a " some-test-db)
                                     "--migrations ./migrations/lucidplan")
                               #:verbose? #t))
+
+;; ====== Container tasks ======
+
+(define (container-build)
+  "Build the container image for mutastructura."
+  ($ '("podman build -t mutastructura .")))
+
+(define (container-run)
+  "Run the container image for mutastructura."
+  ($ '("podman run --rm -it mutastructura:latest")))

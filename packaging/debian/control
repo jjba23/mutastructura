@@ -1,0 +1,34 @@
+Source: mutastructura
+Section: database
+Priority: optional
+Maintainer: Josep Bigorra <jjbigorra@gmail.com>
+# NOTE: guile-dbi is not packaged in Debian yet.  It is listed because this
+# package cannot be loaded without it; package it first.
+Build-Depends:
+ debhelper-compat (= 13),
+ guile-3.0,
+ guile-3.0-dev,
+ pkg-config,
+ guile-gcrypt,
+ guile-dbi
+Standards-Version: 4.6.2
+Homepage: https://codeberg.org/jjba23/mutastructura
+Vcs-Git: https://codeberg.org/jjba23/mutastructura.git
+Vcs-Browser: https://codeberg.org/jjba23/mutastructura
+Rules-Requires-Root: no
+
+Package: mutastructura
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ guile-3.0,
+ guile-gcrypt,
+ guile-dbi,
+ bash,
+ coreutils
+Description: Relational database schema migrations in Guile Scheme
+ Mutastructura applies relational database schema migrations written as
+ S-expressions. It tracks which migrations have run, supports SQLite, MySQL
+ and PostgreSQL through guile-dbi, and can run forwards, backwards or to a
+ named target.

@@ -1,0 +1,61 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+
+GUILE_VER = 3.0
+SITE_DIR = debian/mutastructura/usr/share/guile/site/$(GUILE_VER)
+BUILD_SITE = build/site
+BUILD_CCACHE = build/ccache
+# Debian's site-ccache lives in the multiarch libdir; ask Guile's
+# pkg-config file instead of hard-coding a path that would be wrong
+# on the next architecture.
+CCACHE_DIR = $(shell pkg-config --variable=siteccachedir guile-3.0)
+
+%:
+	dh $@
+
+# Guile's .go files are ELF objects whose debug sections dwz does
+# not understand; there is no separate debug binary to compress.
+override_dh_dwz:
+
+override_dh_auto_configure:
+	# Nothing to configure: Scheme sources plus (for applications) a
+	# bash launcher, installed by hand below.
+
+override_dh_auto_build:
+	mkdir -p $(BUILD_SITE)/mutastructura $(BUILD_CCACHE)/mutastructura
+	cp -r src/mutastructura/. $(BUILD_SITE)/mutastructura/
+
+	# Byte-compile every module so that loading it does not compile it
+	# again on first use.
+	find $(BUILD_SITE)/mutastructura -name '*.scm' | while read -r scm_file; do \
+		rel_path="$${scm_file#$(BUILD_SITE)/}"; \
+		go_file="$(BUILD_CCACHE)/$${rel_path%.scm}.go"; \
+		mkdir -p "$$(dirname "$$go_file")"; \
+		guild compile -L $(BUILD_SITE) -o "$$go_file" "$$scm_file"; \
+	done
+
+# Upstream's SQLite runner tests fail against guile-dbi 3.2.0, and Debian and openSUSE do not package guile-dbi; the suite is not run.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	# Launcher.  It resolves its modules and resources relative to
+	# its own prefix, so it is installed next to the site directory.
+	install -Dm 0755 scripts/mutastructura debian/mutastructura/usr/bin/mutastructura
+	# Upstream reads resources from the generic share/resources; several of
+	# these packages would clash there, so it moves under share/mutastructura/.
+	sed -i 's|share/resources|share/mutastructura/resources|g' debian/mutastructura/usr/bin/mutastructura
+
+	# Scheme sources and their byte-compiled copies.
+	mkdir -p $(SITE_DIR) debian/mutastructura$(CCACHE_DIR)
+	cp -r $(BUILD_SITE)/mutastructura $(SITE_DIR)/
+	cp -r $(BUILD_CCACHE)/mutastructura debian/mutastructura$(CCACHE_DIR)/
+
+	# Resources the launcher passes to the program: help text and,
+	# depending on the project, templates, themes or migrations.
+	mkdir -p debian/mutastructura/usr/share/mutastructura/resources
+	cp -r resources/. debian/mutastructura/usr/share/mutastructura/resources/
+
+override_dh_auto_clean:
+	rm -rf build
+	dh_auto_clean
