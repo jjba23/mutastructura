@@ -38,7 +38,7 @@ makedepends=(
 )
 
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('5e08169da626fae0de171800c651ef10bf677d6109fd21afdd7c46eb39b808d3')
+sha256sums=('d892533f11f7d7d96e818eed766b14478494d67f21183723e7638b4971ca3259')
 
 # Upstream reads resources from the generic share/resources; several of
 # these packages would clash there, so it moves under share/mutastructura/.
