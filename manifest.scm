@@ -40,7 +40,7 @@
 (define-public guile-veritas
   (package
     (name "guile-veritas")
-    (version "0.7.0")
+    (version "0.9.0")
     (source
      (origin
        (method git-fetch)
@@ -49,7 +49,7 @@
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "11n9gyqb7nc0zw4z0fadmw4bd6k673314wpdd66mllwxs2xfcs0q"))))
+        (base32 "1pr8yjnxkrp2fylmn8ihjapin7iz94jqi4hbc6yd0ajll11ajxc9"))))
     (build-system guile-build-system)
     (arguments
      (list
