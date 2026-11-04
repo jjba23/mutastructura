@@ -8,6 +8,9 @@
 
 [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/sqlite.svg]] [[https://jointhefreeworld.org/ggg/dist/postgresql.svg]] [[https://jointhefreeworld.org/ggg/dist/mysql.svg]] [[https://jointhefreeworld.org/ggg/dist/license-agpl3+.svg]] [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]] [[https://jointhefreeworld.org/ggg/dist/codeberg.svg]]
 
+#+attr_html: :width 160 :alt Mutastructura logo
+[[file:logo.svg]]
+
 #+begin_quote
 *Your schema, exactly as you decree -- incrementally.*
 
@@ -18,7 +21,6 @@ gives you the commands you actually need: ~migrate~, ~status~, ~validate~,
 
 No ORM. No model layer. No daemon. Just SQL, a ledger, and honest answers.
 #+end_quote
-
 
 * See it in action
 :PROPERTIES:
@@ -63,7 +65,6 @@ Mutastructura is *mutare* (to change) and *structura* (structure): the changed
 structure, or the act of changing it. The motto is the house style -- come, see,
 and write it in Lisp. The name is long because Latin is; the tool is small on
 purpose.
-
 
 #+begin_example
   🏛️  M U T A S T R U C T U R A  🏛️
@@ -238,7 +239,6 @@ Each recipe carries its own dependency list, so a missing library fails the buil
 - *Nix* if the rest of your machine is already declarative; the flake pins nixpkgs and gives you a binary cache.
 - *Container* if you only want to try the release, or reproduce a report on a machine that has nothing installed.
 - *Distribution package* if you want the project managed by the same tool as the rest of your system, with its licence, manual page and launcher in the usual places.
-
 
 * Installation (INSTALLATIO)
 :PROPERTIES:
