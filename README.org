@@ -999,8 +999,7 @@ This project adheres to the
 The core principle is simple: *AI should assist human creativity and
 problem-solving, never replace human reasoning.* LLMs can be useful for
 reviewing, refactoring small functions or acting as a sounding board, but a
-human must stay in the loop. Autonomous AI agents that generate and submit pull
-requests are not welcome.
+human must stay in the loop.
 
 ** Code of conduct
 :PROPERTIES:
