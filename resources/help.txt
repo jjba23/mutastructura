@@ -1,7 +1,7 @@
 +----------------------------------------------------------------------------+
 MUTASTRUCTURA - Relational Schema Migrations Powered by Lisp
     
-    See more at: https://codeberg.org/jjba23/mutastructura
+    See more at: https://github.com/jjba23/mutastructura
     Software licensed under the MIT license.
     
 USAGE: mutastructura [COMMAND] [OPTIONS]

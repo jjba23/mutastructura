@@ -65,7 +65,7 @@
     (propagated-inputs (list guile-dbi guile-dbd-mysql guile-dbd-sqlite3
                              guile-dbd-postgresql guile-gcrypt))
     (inputs (list guile-3.0 bash-minimal coreutils util-linux))
-    (home-page "https://codeberg.org/jjba23/mutastructura")
+    (home-page "https://github.com/jjba23/mutastructura")
     (synopsis "Relational database schema migrations powered by Guile Scheme")
     (description
      "Mutastructura provides a familiar, declarative and transactional

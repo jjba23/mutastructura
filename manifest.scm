@@ -33,7 +33,7 @@
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://codeberg.org/jjba23/veritas.git")
+             (url "https://github.com/jjba23/veritas.git")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
@@ -44,7 +44,7 @@
       #:source-directory "src"))
     (native-inputs (list guile-3.0))
     (propagated-inputs (list guile-fibers guile-json-4)) ;for versions >= 2.0.0
-    (home-page "https://codeberg.org/jjba23/veritas")
+    (home-page "https://github.com/jjba23/veritas")
     (synopsis "Testing framework for Guile")
     (description
      "Veritas is a testing framework for Guile with an @acronym{EDSL,

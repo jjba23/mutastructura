@@ -24,7 +24,7 @@ Version:        0.9.4
 Release:        0
 Summary:        Relational database schema migrations in Guile Scheme
 License:        MIT
-URL:            https://codeberg.org/jjba23/mutastructura
+URL:            https://github.com/jjba23/mutastructura
 Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  pkgconfig(guile-3.0)
 BuildRequires:  guile-gcrypt

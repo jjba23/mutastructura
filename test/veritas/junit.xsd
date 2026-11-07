@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The shape of the document `junit-reporter' writes.
+
+  It is deliberately the common subset importers understand (IntelliJ's
+  "import tests from file", the GitHub JUnit actions): a `testsuites' element
+  holding `testsuite' elements, each holding `testcase' elements with optional
+  `failure', `error' and `skipped' children.  `file', `suite' and `time' are the
+  attributes veritas adds beyond the usual ones.
+
+  `.github/workflows/tests.yml' runs the validation command; the command cannot
+  appear in this comment, where a double hyphen is not allowed.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <xs:element name="testsuites">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="testsuite" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+      <xs:attribute name="tests" type="xs:nonNegativeInteger" use="required"/>
+      <xs:attribute name="failures" type="xs:nonNegativeInteger" use="required"/>
+      <xs:attribute name="errors" type="xs:nonNegativeInteger" use="required"/>
+      <xs:attribute name="skipped" type="xs:nonNegativeInteger" use="required"/>
+      <xs:attribute name="time" type="xs:decimal" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="testsuite">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="testcase" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+      <xs:attribute name="tests" type="xs:nonNegativeInteger" use="required"/>
+      <xs:attribute name="failures" type="xs:nonNegativeInteger" use="required"/>
+      <xs:attribute name="errors" type="xs:nonNegativeInteger" use="required"/>
+      <xs:attribute name="skipped" type="xs:nonNegativeInteger" use="required"/>
+      <xs:attribute name="time" type="xs:decimal" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="testcase">
+    <xs:complexType>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element ref="failure"/>
+        <xs:element ref="error"/>
+        <xs:element ref="skipped"/>
+      </xs:choice>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+      <xs:attribute name="classname" type="xs:string" use="required"/>
+      <xs:attribute name="file" type="xs:string"/>
+      <xs:attribute name="suite" type="xs:string"/>
+      <xs:attribute name="time" type="xs:decimal" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="failure">
+    <xs:complexType mixed="true">
+      <xs:attribute name="message" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="error">
+    <xs:complexType mixed="true">
+      <xs:attribute name="message" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="skipped">
+    <xs:complexType>
+      <xs:attribute name="message" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

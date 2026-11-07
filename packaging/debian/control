@@ -12,9 +12,9 @@ Build-Depends:
  guile-gcrypt,
  guile-dbi
 Standards-Version: 4.6.2
-Homepage: https://codeberg.org/jjba23/mutastructura
-Vcs-Git: https://codeberg.org/jjba23/mutastructura.git
-Vcs-Browser: https://codeberg.org/jjba23/mutastructura
+Homepage: https://github.com/jjba23/mutastructura
+Vcs-Git: https://github.com/jjba23/mutastructura.git
+Vcs-Browser: https://github.com/jjba23/mutastructura
 Rules-Requires-Root: no
 
 Package: mutastructura

@@ -121,7 +121,7 @@ stdenv.mkDerivation {
 
   meta = with lib; {
     description = "Relational database schema migrations powered by GNU Guile";
-    homepage = "https://codeberg.org/jjba23/mutastructura";
+    homepage = "https://github.com/jjba23/mutastructura";
     license = licenses.mit;
     mainProgram = "mutastructura";
     platforms = platforms.linux;

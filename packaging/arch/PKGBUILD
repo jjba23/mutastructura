@@ -9,7 +9,7 @@ pkgver=0.9.2
 pkgrel=1
 pkgdesc="Relational database schema migrations in Guile Scheme"
 arch=('any')
-url="https://codeberg.org/jjba23/mutastructura"
+url="https://github.com/jjba23/mutastructura"
 license=('MIT')
 
 depends=(

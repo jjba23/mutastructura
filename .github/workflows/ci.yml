@@ -1,0 +1,27 @@
+# mutastructura
+
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+# The pipeline is a list of maak tasks and a deployment that runs them: the
+# tests on every push to trunk, and the API documentation published from there
+# once they pass.  There are no steps of our own to maintain here, and the log
+# that matters is Byggsteg's.
+
+name: CI
+
+on:
+  push:
+    branches: [trunk]
+
+permissions:
+  contents: read
+
+jobs:
+  byggsteg:
+    name: 🧱 Byggsteg
+    uses: jjba23/byggsteg-github/.github/workflows/byggsteg.yml@trunk
+    with:
+      tasks: maak-test maak-deploy
+      timeout-minutes: 60
+    secrets: inherit

@@ -1,0 +1,67 @@
+# mutastructura
+
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+# The pipeline in ci.yml runs the suite on Byggsteg, which reports it in its
+# own log.  This workflow is the part that has to run on the runner itself:
+# GitHub parses no test results of its own, so the JUnit document is validated
+# against the schema and then handed to the action that turns it into a check
+# with annotations.  A document that no action can read is the failure a local
+# run cannot see.
+
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: tests and JUnit report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Install xmllint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-utils
+
+      # The runner writes the document itself, so what CI publishes is what the
+      # run produced rather than a conversion of its log.  A failing file no
+      # longer ends the run, so the whole suite is measured either way.
+      - name: Run the suite
+        id: suite
+        continue-on-error: true
+        run: |
+          nix develop --command env \
+            VERITAS_TEST_TYPE=unit \
+            VERITAS_REPORTER=junit-reporter \
+            VERITAS_JUNIT_PATH=reports/junit/mutastructura-junit.xml \
+            guile -L ./src -L ./test -L . -c '((@ (veritas runner) run-tests))'
+
+      - name: The report matches the schema
+        run: xmllint --noout --schema test/veritas/junit.xsd reports/junit/mutastructura-junit.xml
+
+      - name: Publish the report
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: reports/junit/mutastructura-junit.xml
+          check_name: mutastructura tests
+          detailed_summary: true
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-report
+          path: reports/junit/mutastructura-junit.xml
+
+      - name: Fail when the suite failed
+        if: steps.suite.outcome == 'failure'
+        run: exit 1

@@ -6,7 +6,7 @@
 #+OPTIONS: toc:nil num:nil
 #+STARTUP: overview
 
-[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/sqlite.svg]] [[https://jointhefreeworld.org/ggg/dist/postgresql.svg]] [[https://jointhefreeworld.org/ggg/dist/mysql.svg]] [[https://jointhefreeworld.org/ggg/dist/license-mit.svg]] [[https://jointhefreeworld.org/ggg/dist/codeberg.svg]]
+[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/sqlite.svg]] [[https://jointhefreeworld.org/ggg/dist/postgresql.svg]] [[https://jointhefreeworld.org/ggg/dist/mysql.svg]] [[https://jointhefreeworld.org/ggg/dist/license-mit.svg]] [[https://jointhefreeworld.org/ggg/dist/github.svg]]
 
 #+attr_html: :width 160 :alt Mutastructura logo
 [[file:logo.svg]]
@@ -253,7 +253,7 @@ Each recipe carries its own dependency list, so a missing library fails the buil
 Clone the repository and install the package definition it carries:
 
 #+begin_src shell
-git clone https://codeberg.org/jjba23/mutastructura.git
+git clone https://github.com/jjba23/mutastructura.git
 cd mutastructura
 guix package --install-from-file=guix.scm
 mutastructura --help
@@ -976,11 +976,11 @@ Contributions are warmly welcome -- code, documentation, bug reports, and
 questions all make the project better.
 
 - *Bugs and ideas:* open an issue in the
-  [[https://codeberg.org/jjba23/mutastructura/issues][Codeberg issue tracker]].
+  [[https://github.com/jjba23/mutastructura/issues][GitHub issue tracker]].
   Include your operating system, the database engine and version, the exact
   command, and what you expected versus what happened. A minimal migration
   directory that reproduces the problem is worth a page of prose.
-- *Patches:* fork the repository on Codeberg, make a focused branch, and open a
+- *Patches:* fork the repository on GitHub, make a focused branch, and open a
   pull request. Small, self-contained changes are easiest to review.
 - *Tests:* run ~maak test~ before sending a patch. Add a test for the behaviour
   you changed -- a bug fix without a failing-first test is a rumour.

@@ -72,7 +72,7 @@ ENV LANG=C.UTF-8 \
 
 LABEL org.opencontainers.image.title="mutastructura" \
       org.opencontainers.image.description="Relational database schema migrations in Guile Scheme" \
-      org.opencontainers.image.url="https://codeberg.org/jjba23/mutastructura" \
+      org.opencontainers.image.url="https://github.com/jjba23/mutastructura" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}"
 
