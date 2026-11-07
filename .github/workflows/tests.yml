@@ -20,6 +20,11 @@ jobs:
   test:
     name: tests and JUnit report
     runs-on: ubuntu-latest
+    # Publishing the report is a check, and a repository whose default token is
+    # read-only would fail the step after a green suite.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
 

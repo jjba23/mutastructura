@@ -98,7 +98,7 @@
       "flake": false,
       "locked": {
         "lastModified": 1793887632,
-        "narHash": "sha256-67IEvbp0uQW9mvOM28nuvwmYA01CjpHFfkwr+St85Ho=",
+        "narHash": "sha256-U8naAa8hNVinnzTAdOUYkG6pF1aSzUPoOs36W6w2JSo=",
         "owner": "jjba23",
         "repo": "veritas",
         "rev": "78cc0cc1865c95c181477a1564005e3dce9c8fd0",
