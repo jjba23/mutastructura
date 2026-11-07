@@ -255,7 +255,7 @@
          (test "a SQLite URL is a path, taken verbatim"
                #:shuffle? #f
                (let ((spec (spec-of "sqlite3:///var/lib/app.db")))
-                 (assert-equal #:expect "sqlite3"
+                 (assert-equal #:expect 'sqlite3
                                #:got (engine-id (connection-spec-engine spec))
                                #:name "the engine")
                  (assert-equal #:expect "/var/lib/app.db"
@@ -552,7 +552,9 @@
                  (assert-equal #:expect "2026-04-01_21:54:00_test"
                                #:got (migration-version file)
                                #:name "with its version")
-                 (assert-equal #:expect 'repeatable #:got (migration-kind file)
+                 ;; The helper's entry records the kind the runner writes, and
+                 ;; the recorded kind is what a ledger entry is read as.
+                 (assert-equal #:expect 'versioned #:got (migration-kind file)
                                #:name "and its kind")
                  (assert-equal #:expect #t #:got (assq-ref file 'applied?)
                                #:name "and known to be applied"))
@@ -589,7 +591,7 @@
                       (plan (plan-migrations files '())))
                  (assert-length #:expect 2 #:got plan
                                 #:name "both files are in the plan")
-                 (assert-equal #:expect '(pending pending)
+                 (assert-equal #:expect '(pending repeatable-pending)
                                #:got (map (lambda (e) (assq-ref e 'state)) plan)
                                #:name "and both are pending")
                  (assert-length #:expect 2 #:got (plan-applicable plan)

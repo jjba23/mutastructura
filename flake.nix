@@ -1,19 +1,7 @@
 # mutastructura
 
+# SPDX-License-Identifier: MIT
 # Copyright © Josep Bigorra <jjbigorra@gmail.com>
-
-# mutastructura is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# mutastructura is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-
-# You should have received a copy of the GNU Affero General Public License
-# along with mutastructura.  If not, see <https://www.gnu.org/licenses/>.
 
 {
   description = "Mutastructura - database schema migrations powered by GNU Guile";
@@ -42,6 +30,14 @@
       url = "github:jjba23/nixpkgs/guile-dbd-postgresql-init";
       flake = false;
     };
+
+    # The test runner, pinned to a release because the suite is written
+    # against it: nixpkgs carries no copy, so the dev shell builds one from
+    # veritas' own expression instead of restating how.
+    veritas-src = {
+      url = "github:jjba23/veritas/v1.4.0";
+      flake = false;
+    };
   };
 
   outputs =
@@ -51,6 +47,7 @@
     , guile-dbd-sqlite3-src
     , guile-dbd-mysql-src
     , guile-dbd-postgresql-src
+    , veritas-src
     }:
     let
       # The launcher is a bash script that shells out to util-linux and
@@ -72,6 +69,7 @@
               "${guile-dbd-mysql-src}/pkgs/by-name/gu/guile-dbd-mysql/package.nix" { };
             guile-dbd-postgresql = final.callPackage
               "${guile-dbd-postgresql-src}/pkgs/by-name/gu/guile-dbd-postgresql/package.nix" { };
+            guile-veritas = final.callPackage "${veritas-src}/default.nix" { };
           })
         ];
       };
@@ -108,9 +106,17 @@
               guile-dbd-mysql
               guile-dbd-postgresql
               guile-gcrypt
+              guile-veritas
             ];
+            # The drivers load themselves by name at run time, so the shell
+            # points guile-dbi at them the same way the package wrapper does.
             shellHook = ''
               export GUILE_LOAD_PATH="$PWD/src''${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}"
+              export GUILE_DBD_PATH="${pkgs.lib.makeSearchPath "lib" [
+                pkgs.guile-dbd-sqlite3
+                pkgs.guile-dbd-mysql
+                pkgs.guile-dbd-postgresql
+              ]}''${GUILE_DBD_PATH:+:$GUILE_DBD_PATH}"
             '';
           };
         });
