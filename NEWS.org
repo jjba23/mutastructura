@@ -1,0 +1,52 @@
+#+title: Changelog and News 📰
+#+author: Josep Bigorra
+#+email: jjbigorra@gmail.com
+#+options: toc:nil
+
+All notable changes to this project will be documented in this file. Changes are listed per project release (tag) and within each tag there are details about changes, additions, fixes and removals.
+
+This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
+
+*[Unreleased]*
+
+Nothing yet.
+
+*[Released]*
+
+** v0.9.5 (2026-11-07)
+
+A housekeeping release: the project is MIT licensed, the repository lives at
+GitHub, and the pipeline runs on GitHub Actions instead of Woodpecker.
+
+*** Changed
+
+- Mutastructura is licensed under the MIT License, where it was
+  AGPL-3.0-or-later.  =COPYING= became =LICENSE=, every source file carries
+  =SPDX-License-Identifier: MIT=, and the documentation and examples are MIT
+  too rather than FDL-1.3, so one licence covers the tree.
+- The sources are tracked at =https://github.com/jjba23/mutastructura= now that
+  Codeberg is archived, and the README, the container label and the Arch,
+  Debian and openSUSE recipes point there.
+- The Nix dev shell carries =guile-veritas= 1.4.0, pinned as a flake input, and
+  exports =GUILE_DBD_PATH=, so the suite runs in the shell without Guix.
+
+*** Added
+
+- Continuous integration on GitHub Actions.  =.github/workflows/ci.yml= hands
+  the =maak-test= and =maak-deploy= tasks to Byggsteg on every push to
+  =trunk=, and =.github/workflows/tests.yml= runs the suite in the Nix dev
+  shell, validates the JUnit document against =test/veritas/junit.xsd= and
+  publishes it as a check with annotations.
+
+*** Fixes
+
+- Three assertions in =test/veritas/unit/core.scm= named the behaviour from
+  before repeatable migrations existed: the engine of a SQLite URL as a string
+  rather than a symbol, the kind of a ledger entry that records the kind itself,
+  and two migrations pending as =pending= rather than as =pending= and
+  =repeatable-pending=.  The suite is green again, which is what CI needs.
+
+*** Documentation
+
+- This file.  Release notes live here from now on, so the README no longer
+  needs to say what changed.

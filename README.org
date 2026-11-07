@@ -171,7 +171,7 @@ Guix users get all of the Guile requirements from [[file:manifest.scm][manifest.
 :CUSTOM_ID: ways-to-install
 :END:
 
-/Four routes to the same 0.9.2, from the most automated to the most manual.  They all build the tag this README documents./
+/Four routes to the same 0.9.5, from the most automated to the most manual.  They all build the tag this README documents./
 
 ** From the Guix channel
 :PROPERTIES:
@@ -179,7 +179,7 @@ Guix users get all of the Guile requirements from [[file:manifest.scm][manifest.
 :END:
 *GNU Guix* is the functional package manager this project is developed with: a build is a pure function of its inputs, so the same recipe gives the same result everywhere, and an upgrade that goes wrong can be rolled back.
 
-The jointhefreeworld channel carries ~mutastructura~ at 0.9.2, so a checkout of the channel is enough — no package definition to write:
+The jointhefreeworld channel carries ~mutastructura~, so a checkout of the channel is enough — no package definition to write:
 
 #+begin_src shell
 git clone https://codeberg.org/jjba23/guix-jointhefreeworld.git

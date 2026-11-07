@@ -20,7 +20,7 @@
 %global debug_package %{nil}
 
 Name:           mutastructura
-Version:        0.9.4
+Version:        0.9.5
 Release:        0
 Summary:        Relational database schema migrations in Guile Scheme
 License:        MIT
@@ -90,6 +90,7 @@ cp -r resources/. "%{buildroot}%{_datadir}/mutastructura/resources/"
 %files
 %license LICENSE
 %doc README.org
+%doc NEWS.org
 %{_bindir}/mutastructura
 %dir %{_datadir}/guile
 %dir %{_datadir}/guile/site
