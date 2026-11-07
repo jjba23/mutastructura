@@ -46,6 +46,8 @@
 ;; `postgres-engine?' and `mysql-engine?' are the three questions the rest of
 ;; this file actually asks.
 
+;;; Code:
+
 (define-module (mutastructura persistence dialect)
   #:declarative? #t
   #:use-module (srfi srfi-1)

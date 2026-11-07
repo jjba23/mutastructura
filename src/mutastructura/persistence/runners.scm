@@ -15,6 +15,8 @@
 ;; registry and nothing else, which is what makes `--database yugabytedb'
 ;; (PostgreSQL's protocol) or `--database mariadb' (MySQL's) cost nothing to add.
 
+;;; Code:
+
 (define-module (mutastructura persistence runners)
   #:declarative? #t
   #:use-module (ice-9 exceptions)

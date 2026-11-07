@@ -81,6 +81,8 @@
 ;; `clean' needs no migration directory; every other command needs one, and the
 ;; help text says which is which, and so does the message when one is missing.
 
+;;; Code:
+
 (define-module (mutastructura main)
   #:declarative? #t
   #:use-module (ice-9 exceptions)
@@ -285,7 +287,7 @@ does not run a statement."
 (define (connection-spec-of connection engine)
   "The connection spec for CONNECTION, reached as ENGINE.
 
-A URL -- `postgresql://user:pass@host/db', `sqlite3:///var/lib/app.db' -- is
+A URL -- `postgresql://user:pass@@host/db', `sqlite3:///var/lib/app.db' -- is
 parsed into its parts, and a URL for another engine than the one asked for is
 refused rather than silently ignored.  Anything else is taken at face value as
 the engine's own connection string, which is what guile-dbi's

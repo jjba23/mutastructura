@@ -52,6 +52,8 @@
 ;; Every statement is reported with the line its first real character sits on,
 ;; which is what turns "a migration failed" into "line 47 of this file failed".
 
+;;; Code:
+
 (define-module (mutastructura persistence sql-parser)
   #:declarative? #t
   #:use-module (srfi srfi-9)

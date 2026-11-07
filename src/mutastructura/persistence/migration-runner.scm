@@ -22,6 +22,8 @@
 ;; created now has nine.  Writing only the columns that exist is what makes the
 ;; upgrade a non-event, and it is cheaper than a migration for the ledger itself.
 
+;;; Code:
+
 (define-module (mutastructura persistence migration-runner)
   #:declarative? #t
   #:use-module (srfi srfi-1)

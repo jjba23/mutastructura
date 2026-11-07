@@ -23,6 +23,8 @@
 ;; driver that could not answer -- into a failed migration, which rolled back a
 ;; schema that had in fact been applied.
 
+;;; Code:
+
 (define-module (mutastructura persistence util)
   #:declarative? #t
   #:use-module (srfi srfi-1)
@@ -52,7 +54,6 @@
             alist?
             value->sql-literal
             pair->sql-assignment
-            migration-exception
             migration-exception?
             migration-exception-message
             raise-migration-error

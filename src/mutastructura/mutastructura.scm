@@ -22,6 +22,8 @@
 ;; `migrate', `baseline' and `undo' are all the same plan read in different
 ;; ways, which is why one planner serves the whole command set.
 
+;;; Code:
+
 (define-module (mutastructura mutastructura)
   #:declarative? #t
   #:use-module (ice-9 textual-ports)
@@ -93,7 +95,6 @@
             scandir-for-migrations
             migration-file?
             migration-file
-            migration-files
             migration-name
             migration-path
             migration-version
@@ -340,7 +341,7 @@ both: `--database timescaledb' is opened with the `postgresql' driver, and
 (define (or-empty text)
   "TEXT when there is a TEXT, and the empty string when there is not.
 
-Guile's `format' has no `~@[' -- the conditional that keeps its own argument --
+Guile's `format' has no `~@@[' -- the conditional that keeps its own argument --
 and `~:[~;...~]' needs a boolean and reads badly next to a sentence.  One helper
 says 'print this when there is something to print' at every call site that wants
 it, which is what an optional part of an error message is."
@@ -441,7 +442,7 @@ it, which is what an optional part of an error message is."
                   (delete "" (string-split query #\&)))))
 
 (define (split-authority authority)
-  "Split `user:pass@host:port' into user, password, host and port."
+  "Split `user:pass@@host:port' into user, password, host and port."
   (let* ((at (string-rindex authority #\@))
          (userinfo (and at (substring authority 0 at)))
          (hostport (if at (substring authority (+ at 1)) authority))
@@ -534,8 +535,8 @@ tools:
 @example
 sqlite3:///var/lib/app.db
 sqlite3://./local.db
-postgresql://alice:secret@db.example.net:5432/appdb
-mysql://alice:secret@127.0.0.1:3306/appdb
+postgresql://alice:secret@@db.example.net:5432/appdb
+mysql://alice:secret@@127.0.0.1:3306/appdb
 @end example
 
 A string whose scheme is not a known engine is taken at face value: the result
