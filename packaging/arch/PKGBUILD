@@ -5,7 +5,7 @@
 
 # Maintainer: Josep Bigorra <jjbigorra@gmail.com>
 pkgname=mutastructura
-pkgver=0.9.5
+pkgver=0.9.6
 pkgrel=1
 pkgdesc="Relational database schema migrations in Guile Scheme"
 arch=('any')

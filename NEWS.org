@@ -13,6 +13,27 @@ Nothing yet.
 
 *[Released]*
 
+** v0.9.6 (2026-11-07)
+
+A repair release: the documentation builds again, so `maak deploy` - the second
+half of the pipeline - finishes where it used to stop at its first step.
+
+*** Fixes
+
+- `documenta api` could not finish, for three reasons at once.  Guile reads a
+  module's documentation from =;;; Commentary:= to =;;; Code:=, and the modules
+  had no code marker, so the whole source counted as documentation and
+  documenta parsed code as Texinfo; every documented module carries the marker
+  now.
+- A docstring holding =user:pass@host= or =~@[= stopped the Texinfo parser at
+  the =@=, because that is a command character.  Those =@= are doubled, which is
+  how a literal one is written, and the rendered pages carry a single =@=
+  again.
+- documenta refuses an exported name its module never defines, and found two
+  left behind by renames: =migration-files= in =(mutastructura mutastructura)=
+  and =migration-exception= in =(mutastructura persistence util)=.  Both are
+  gone, and no module selected either.
+
 ** v0.9.5 (2026-11-07)
 
 A housekeeping release: the project is MIT licensed, the repository lives at

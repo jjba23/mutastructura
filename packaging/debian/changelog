@@ -1,3 +1,11 @@
+mutastructura (0.9.6-1) unstable; urgency=medium
+
+  * Build the API documentation again: the modules carry their code marker,
+    docstrings escape the @ Texinfo would read as a command, and two stale
+    exports are gone.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Sat, 07 Nov 2026 21:48:16 +0100
+
 mutastructura (0.9.5-1) unstable; urgency=medium
 
   * Move the project to the MIT license.
