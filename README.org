@@ -6,7 +6,7 @@
 #+OPTIONS: toc:nil num:nil
 #+STARTUP: overview
 
-[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/sqlite.svg]] [[https://jointhefreeworld.org/ggg/dist/postgresql.svg]] [[https://jointhefreeworld.org/ggg/dist/mysql.svg]] [[https://jointhefreeworld.org/ggg/dist/license-agpl3+.svg]] [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]] [[https://jointhefreeworld.org/ggg/dist/codeberg.svg]]
+[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/sqlite.svg]] [[https://jointhefreeworld.org/ggg/dist/postgresql.svg]] [[https://jointhefreeworld.org/ggg/dist/mysql.svg]] [[https://jointhefreeworld.org/ggg/dist/license-mit.svg]] [[https://jointhefreeworld.org/ggg/dist/codeberg.svg]]
 
 #+attr_html: :width 160 :alt Mutastructura logo
 [[file:logo.svg]]
@@ -1016,13 +1016,9 @@ learn, disagree well, and build excellent free software together.
 :CUSTOM_ID: license-licentia
 :END:
 
-Mutastructura and all of its source code are free software, licensed under the
-*GNU Affero General Public License v3 or newer*. See [[file:COPYING][COPYING]] or
-[[https://www.gnu.org/licenses/agpl-3.0.html][the AGPL text]].
-
-The documentation and examples, including this README, are licensed under the
-*GNU Free Documentation License v1.3 or newer*:
-[[https://www.gnu.org/licenses/fdl-1.3.html][the FDL text]].
+Mutastructura and all of its source code, documentation and examples are
+licensed under the *MIT License*. See [[file:LICENSE][LICENSE]] or
+[[https://opensource.org/license/mit][the MIT text]].
 
 #+begin_quote
 _Veni, vidi, Lisp._

@@ -23,7 +23,7 @@ Name:           mutastructura
 Version:        0.9.4
 Release:        0
 Summary:        Relational database schema migrations in Guile Scheme
-License:        AGPL-3.0-or-later
+License:        MIT
 URL:            https://codeberg.org/jjba23/mutastructura
 Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  pkgconfig(guile-3.0)
@@ -88,7 +88,7 @@ cp -r resources/. "%{buildroot}%{_datadir}/mutastructura/resources/"
 # %check omitted.
 
 %files
-%license COPYING
+%license LICENSE
 %doc README.org
 %{_bindir}/mutastructura
 %dir %{_datadir}/guile

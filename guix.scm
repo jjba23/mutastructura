@@ -1,19 +1,7 @@
 ;;; MUTASTRUCTURA - Relational Schema Migrations Powered by Lisp
 
-;; Copyright © Josep Jesus Bigorra Algaba
-
-;; mutastructura is free software: you can redistribute it and/or modify
-;; it under the terms of the GNU Affero General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-
-;; mutastructura is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; GNU Affero General Public License for more details.
-
-;; You should have received a copy of the GNU Affero General Public License
-;; along with mutastructura. If not, see <https://www.gnu.org/licenses/>.
+;; SPDX-License-Identifier: MIT
+;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 (use-modules (guix gexp)
              (guix packages)
@@ -87,6 +75,6 @@ It also exposes library functions and can be imported and used directly from oth
 
 Features include executing migrations transactionally and computing SHA256
 checksums to track schema evolution in a @code{migrations_history} table.")
-    (license license:agpl3+)))
+    (license license:expat)))
 
 mutastructura
