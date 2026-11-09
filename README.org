@@ -994,12 +994,8 @@ questions all make the project better.
 :CUSTOM_ID: ai-policy
 :END:
 
-This project adheres to the
-[[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-ai-policy/index.html][jointhefreeworld AI policy]].
-The core principle is simple: *AI should assist human creativity and
-problem-solving, never replace human reasoning.* LLMs can be useful for
-reviewing, refactoring small functions or acting as a sounding board, but a
-human must stay in the loop.
+This project follows the [[https://jointhefreeworld.org/ai-policy/][jointhefreeworld AI policy]].
+[[file:AI_POLICY.md][AI_POLICY.md]] holds the short version; the full policy is the link above.
 
 ** Code of conduct
 :PROPERTIES:
