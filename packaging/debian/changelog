@@ -1,3 +1,9 @@
+mutastructura (0.9.9-1) unstable; urgency=medium
+
+  * Sync with upstream 0.9.9.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Tue, 10 Nov 2026 21:01:00 +0100
+
 mutastructura (0.9.6-1) unstable; urgency=medium
 
   * Build the API documentation again: the modules carry their code marker,
