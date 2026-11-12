@@ -171,7 +171,7 @@ Guix users get all of the Guile requirements from [[file:manifest.scm][manifest.
 :CUSTOM_ID: ways-to-install
 :END:
 
-/Four routes to the same 0.9.9, from the most automated to the most manual.  They all build the tag this README documents./
+/Four routes to the same 0.9.10, from the most automated to the most manual.  They all build the tag this README documents./
 
 ** From the Guix channel
 :PROPERTIES:

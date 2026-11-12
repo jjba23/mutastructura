@@ -1,3 +1,9 @@
+mutastructura (0.9.10-1) unstable; urgency=medium
+
+  * Build against the jointhefreeworld collection at v1.0.4.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Thu, 12 Nov 2026 15:33:42 +0000
+
 mutastructura (0.9.9-1) unstable; urgency=medium
 
   * Sync with upstream 0.9.9.

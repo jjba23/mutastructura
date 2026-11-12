@@ -13,6 +13,10 @@ Nothing yet.
 
 *[Released]*
 
+** v0.9.10 (2026-11-12)
+
+- Builds against the channels this project builds against: the jointhefreeworld collection at v1.0.4, and Guix master `3b4e873`.
+
 ** v0.9.9 (2026-11-10)
 
 *** Changed

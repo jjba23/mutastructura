@@ -37,7 +37,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "mutastructura";
-  version = "0.9.9";
+  version = "0.9.10";
 
   src = ./.;
 
