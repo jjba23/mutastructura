@@ -63,6 +63,6 @@ concurrently by default.")
                           guile-gcrypt
                           guile-veritas
                           watchexec
-                          texinfo
+                          (specification->package "texinfo")
                           (specification->package "guile-dokgen")
                           guile-ares-rs))

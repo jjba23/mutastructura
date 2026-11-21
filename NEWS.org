@@ -20,6 +20,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v0.9.14 (2026-11-21)
+
+- The API reference is rendered with Texinfo 7.3, so `dokgen`'s stylesheet applies: the page now has its index, its filter and its definition cards, like the `dokgen` manual. The manifest selected the bare `texinfo` binding (6.8), whose `texi2any` emitted the old definition structure, and nothing in the stylesheet matched it.
+- `channels.scm` pins the jointhefreeworld revision that carries `guile-dokgen` 0.9.2.
+
 ** v0.9.13 (2026-11-21)
 
 - The API links point at `index.html`, the one page the reference has been since the dokgen migration, rather than at `.../API.html`.
