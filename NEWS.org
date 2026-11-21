@@ -20,6 +20,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v0.9.13 (2026-11-21)
+
+- The API links point at `index.html`, the one page the reference has been since the dokgen migration, rather than at `.../API.html`.
+- `channels.scm` pins the jointhefreeworld revision that carries `guile-dokgen` 0.9.1.
+
 ** v0.9.12 (2026-11-21)
 
 - The API reference is generated with `dokgen` instead of `documenta`, and rendered as one page: `maak docs` writes `doc/api/index.texi` and `doc/api-dist/index.html`, with `dokgen.css`, `dokgen.js` and the drawn diagrams beside it.
