@@ -6,6 +6,8 @@
 (define-module (maak)
   #:use-module (maak maak)
   #:use-module ((ice-9 rdelim) #:select (read-line))
+  ;; `scandir' names the mermaid sources `maak diagrams' renders.
+  #:use-module (ice-9 ftw)
   ;; The container helpers are imported under a prefix because the tasks
   ;; below are named the way maak exposes them on the command line.
   #:use-module ((maak container) #:prefix ct:)
@@ -55,29 +57,69 @@
   ;; modules, and `-L .' is where the shared test helpers live.  The runner
   ;; scans ./ for test/veritas/unit by itself.  The Veritas variables go
   ;; through `#:env', which sets them for the command inside the shell.
-  (manifest-shell (list "guile" "-L" "./src" "-L" "./test" "-L" "."
-                        "-c" "'((@ (veritas runner) run-tests))'")
-                  #:env '("VERITAS_TEST_TYPE=unit"
-                          "VERITAS_RUN_BENCHMARKS=false")
-                  #:verbose? #t))
+  ;;
+  ;; The shell is the pinned one because the manifest names guile-dokgen,
+  ;; which comes from the jointhefreeworld channel: the ambient Guix knows
+  ;; only the channels the user configured and would not resolve it.
+  (time-machine-manifest-shell
+   (list "guile" "-L" "./src" "-L" "./test" "-L" "."
+         "-c" "'((@ (veritas runner) run-tests))'")
+   #:env '("VERITAS_TEST_TYPE=unit"
+           "VERITAS_RUN_BENCHMARKS=false")
+   #:verbose? #t))
 
 (define (repl)
   "Development REPL."
-  (manifest-shell (list "guile" "-L" "./src"
-                        "-c" "'((@ (ares server) run-nrepl-server))'")))
+  (time-machine-manifest-shell (list "guile" "-L" "./src"
+                                     "-c" "'((@ (ares server) run-nrepl-server))'")))
 
 (define (docs)
-  "Generate technical API documentation for Maak."
+  "Generate Mutastructura's API reference and render it as HTML."
   (delete-file-recursively "doc")
-  ;; Documenta writes ./doc/api/index.texi and texi2any renders it; two calls,
-  ;; so a failure names the step that failed.
-  (time-machine-manifest-shell (list "documenta" "api"
-                                     (~ "./src/~a" project-name)))
+  ;; dokgen extracts the reference from the modules, and texi2any renders it;
+  ;; two calls, so a failure names the step that failed.
   (time-machine-manifest-shell
-   (list "texi2any" "-v" "--html"
+   (list "dokgen" "api"
+         "--destination" "doc/api"
+         (~ "./src/~a" project-name))
+   #:verbose? #t)
+  (mkdir-p "doc/api-dist")
+  ;; `--no-split' writes one page, so the stylesheet and the script the
+  ;; chapter points at, and the diagrams dokgen drew, all sit beside it.
+  (time-machine-manifest-shell
+   (list "texi2any" "-v" "--html" "--no-split"
          (~ "--css-ref=~a" api-docs-css-url)
-         "./doc/api/index.texi"))
-  (mv "./index" "./doc/api-dist"))
+         "-I" "doc/api"
+         "-c" (shell-quote
+               (string-append
+                "EXTRA_HEAD="
+                "<link rel=\"stylesheet\" href=\"dokgen.css\">"
+                "<script src=\"dokgen.js\" defer></script>"))
+         "-o" "doc/api-dist/index.html"
+         "./doc/api/index.texi")
+   #:verbose? #t)
+  (for-each (lambda (asset)
+              (when (file-exists? (~ "doc/api/~a" asset))
+                (cp (~ "doc/api/~a" asset) "doc/api-dist"
+                    #:force? #t #:verbose? #t)))
+            '("dokgen.css" "dokgen.js"))
+  (when (file-exists? "doc/api/diagrams")
+    (cp "doc/api/diagrams" "doc/api-dist" #:force? #t #:verbose? #t)))
+
+(define (diagrams)
+  "Render every mermaid source under resources/diagrams to the SVG beside it."
+  (for-each
+   (lambda (name)
+     (let* ((source (in-vicinity "resources/diagrams" name))
+            (image (string-append (string-drop-right source 4) ".svg")))
+       ((@ (maak maak) run)
+        (list "mmdc" "-i" source "-o" image
+              "--backgroundColor" "transparent")
+        #:verbose? #t)))
+   (scandir "resources/diagrams"
+            (lambda (name)
+              (and (not (member name '("." "..")))
+                   (string-suffix? ".mmd" name))))))
 
 (define (deploy)
   (docs)

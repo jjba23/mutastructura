@@ -5,6 +5,7 @@
 
 (use-modules (guix packages)
              (gnu)
+             (gnu packages)
              (guix utils)
              (guix git-download)
              (guix download)
@@ -63,5 +64,5 @@ concurrently by default.")
                           guile-veritas
                           watchexec
                           texinfo
-                          guile-documenta
+                          (specification->package "guile-dokgen")
                           guile-ares-rs))

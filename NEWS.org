@@ -9,9 +9,23 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
-Nothing yet.
+*** Added
+
+- `maak diagrams` renders every mermaid source under `resources/diagrams` to the SVG beside it. `resources/diagrams/plan-and-apply.svg` is the first one: the plan the README describes, drawn. The same diagram sits in the `;;; Commentary:` block of `(mutastructura mutastructura)`, so `maak docs` draws it into the API reference too.
+
+*** Modified
+
+- The API reference is generated with `dokgen` instead of `documenta`, and rendered as one page: `maak docs` writes `doc/api/index.texi` and `doc/api-dist/index.html`, with `dokgen.css`, `dokgen.js` and the drawn diagrams beside it.
+- `channels.scm` pins Guix `5cea8de` and adds the `jointhefreeworld` channel, which is where `guile-dokgen` comes from. `maak test`, `maak repl` and `maak docs` run inside `guix time-machine`, because the manifest names a package that only that channel provides.
 
 *[Released]*
+
+** v0.9.12 (2026-11-21)
+
+- The API reference is generated with `dokgen` instead of `documenta`, and rendered as one page: `maak docs` writes `doc/api/index.texi` and `doc/api-dist/index.html`, with `dokgen.css`, `dokgen.js` and the drawn diagrams beside it.
+- `channels.scm` pins Guix `5cea8de` and adds the `jointhefreeworld` channel, which is where `guile-dokgen` comes from. `maak test`, `maak repl` and `maak docs` run inside `guix time-machine`, because the manifest names a package that only that channel provides.
+- `maak diagrams` renders every mermaid source under `resources/diagrams` to the SVG beside it. `resources/diagrams/plan-and-apply.svg` is the first one: the plan the README describes, drawn.
+- The `(mutastructura mutastructura)` commentary now draws that plan beside the prose that already explained it -- discovery, the ledger, planning, then the action a command takes on the plan.
 
 ** v0.9.10 (2026-11-12)
 

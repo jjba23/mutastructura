@@ -1,0 +1,15 @@
+flowchart LR
+%% mutastructura --- the plan, and the two ways a command reads it
+%% SPDX-License-Identifier: MIT
+%% Copyright © Josep Bigorra <jjbigorra@gmail.com>
+%% Rendered to plan-and-apply.svg by `maak diagrams'.  The same diagram sits in
+%% the `;;; Commentary:' block of src/mutastructura/mutastructura.scm, which is
+%% where the API documentation picks it up.
+  directory["migrations directory"] --> discovery["discovery: name, version, order"]
+  ledger["migrations_history"] --> planning["plan-migrations"]
+  discovery --> planning
+  planning --> plan["plan: a state and an action per file"]
+  plan --> info["status, validate"]
+  plan --> change["migrate, baseline, rollback, repair"]
+  registry["engine registry"] --> runner["runner for the engine's family"]
+  runner --> change

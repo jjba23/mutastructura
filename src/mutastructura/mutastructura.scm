@@ -21,6 +21,18 @@
 ;; Planning is deliberately separated from execution: `info', `validate',
 ;; `migrate', `baseline' and `undo' are all the same plan read in different
 ;; ways, which is why one planner serves the whole command set.
+;;
+;; ```mermaid
+;; flowchart LR
+;;   directory["migrations directory"] --> discovery["discovery: name, version, order"]
+;;   ledger["migrations_history"] --> planning["plan-migrations"]
+;;   discovery --> planning
+;;   planning --> plan["plan: a state and an action per file"]
+;;   plan --> info["status, validate"]
+;;   plan --> change["migrate, baseline, rollback, repair"]
+;;   registry["engine registry"] --> runner["runner for the engine's family"]
+;;   runner --> change
+;; ```
 
 ;;; Code:
 
