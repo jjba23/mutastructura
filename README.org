@@ -11,6 +11,8 @@
 #+attr_html: :width 160 :alt Mutastructura logo
 [[file:logo.svg]]
 
+- 📖 *API reference:* [[https://jointhefreeworld.org/api-docs/mutastructura/index.html][Mutastructura API reference]]
+
 #+begin_quote
 *Your schema, exactly as you decree -- incrementally.*
 
