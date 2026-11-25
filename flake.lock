@@ -97,16 +97,16 @@
     "veritas-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1793887632,
-        "narHash": "sha256-67IEvbp0uQW9mvOM28nuvwmYA01CjpHFfkwr+St85Ho=",
+        "lastModified": 1795562192,
+        "narHash": "sha256-ZwP9Ye/DkFsAXdariCP/FvuLauqxl0ylUMjo2YQHaNE=",
         "owner": "jjba23",
         "repo": "veritas",
-        "rev": "78cc0cc1865c95c181477a1564005e3dce9c8fd0",
+        "rev": "66bee4e02c407e7f2c289f9db9cc8abf11323f5d",
         "type": "github"
       },
       "original": {
         "owner": "jjba23",
-        "ref": "v1.4.0",
+        "ref": "v1.6.0",
         "repo": "veritas",
         "type": "github"
       }

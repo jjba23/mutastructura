@@ -35,7 +35,7 @@
     # against it: nixpkgs carries no copy, so the dev shell builds one from
     # veritas' own expression instead of restating how.
     veritas-src = {
-      url = "github:jjba23/veritas/v1.4.0";
+      url = "github:jjba23/veritas/v1.6.0";
       flake = false;
     };
   };
