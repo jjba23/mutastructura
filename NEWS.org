@@ -20,6 +20,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v0.9.18 (2026-11-26)
+
+*** Changed
+
+- The pinned Guix channel carries `guile-dokgen` 0.12.0: the published API reference folds the source behind each definition into a panel a reader opens, and reads on a quieter page with translucent surfaces.
+
 ** v0.9.14 (2026-11-21)
 
 - The API reference is rendered with Texinfo 7.3, so `dokgen`'s stylesheet applies: the page now has its index, its filter and its definition cards, like the `dokgen` manual. The manifest selected the bare `texinfo` binding (6.8), whose `texi2any` emitted the old definition structure, and nothing in the stylesheet matched it.
